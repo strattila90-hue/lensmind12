@@ -37,6 +37,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -95,6 +96,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var brandBtn: Button
     private lateinit var scanBtn: Button
     private lateinit var updateBtn: Button
+    private lateinit var hintTv: TextView
+    private lateinit var controls: LinearLayout
+    private lateinit var catTvBtn: Button
+    private lateinit var catLedBtn: Button
+    private var hasIr = false
 
     // ---- állapot ----
     private val insets = intArrayOf(0, 0, 0, 0) // bal, felső, jobb, alsó
@@ -109,6 +115,8 @@ class MainActivity : AppCompatActivity() {
     private var lastAnalysis = 0L
     private var frames = 0
     private var pending: Updater.Info? = null
+    private var resumeUpdate = false
+    private var lastUpdateCheck = -1L
     private var lastQr = ""
     private var lastQrAt = 0L
 
@@ -156,6 +164,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         ir = getSystemService(Context.CONSUMER_IR_SERVICE) as? ConsumerIrManager
+        hasIr = runCatching { ir?.hasIrEmitter() }.getOrNull() == true
         brand = runCatching {
             Brand.valueOf(getPreferences(MODE_PRIVATE).getString("brand", Brand.LG.name)!!)
         }.getOrDefault(Brand.LG)
@@ -166,16 +175,25 @@ class MainActivity : AppCompatActivity() {
         }
 
         buildUi()
+        if (!getPreferences(MODE_PRIVATE).getBoolean("help_seen", false)) root.post { showHelp() }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
         ) startCamera()
         else ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 1)
-
-        checkUpdate(silent = true)
     }
 
-    override fun onResume() { super.onResume(); handler.post(clock) }
+    override fun onResume() {
+        super.onResume()
+        handler.post(clock)
+        val p = pending
+        if (resumeUpdate && p != null && Updater.canInstall(this)) {
+            resumeUpdate = false
+            showUpdateDialog(p, autoStart = true)
+        } else if (lastUpdateCheck < 0 || SystemClock.elapsedRealtime() - lastUpdateCheck > 30 * 60 * 1000L) {
+            checkUpdate(silent = true)
+        }
+    }
 
     override fun onPause() {
         handler.removeCallbacks(clock)
@@ -268,9 +286,9 @@ class MainActivity : AppCompatActivity() {
     private fun circuit(label: String, color: Int): Pair<View, TextView> {
         val lab = TextView(this).apply {
             text = label
-            textSize = 9f
+            textSize = 11f
             setTextColor(0xFFE8E8E8.toInt())
-            letterSpacing = 0.18f
+            letterSpacing = 0.04f
             typeface = Typeface.DEFAULT_BOLD
         }
         val disp = TextView(this).apply {
@@ -338,9 +356,9 @@ class MainActivity : AppCompatActivity() {
         }
         chrome(title)
         val sub = TextView(this).apply {
-            text = "REMOTE  ·  ${BuildConfig.VERSION_NAME.uppercase(Locale.US)}"
+            text = "TV-TÁVIRÁNYÍTÓ KAMERÁVAL  ·  ${BuildConfig.VERSION_NAME}"
             textSize = 10f
-            letterSpacing = 0.25f
+            letterSpacing = 0.08f
             setTextColor(0xFFFFB27A.toInt())
         }
         val titleBlock = LinearLayout(this).apply {
@@ -355,6 +373,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             addView(titleBlock, LinearLayout.LayoutParams(0, -2, 1f))
             addView(flux, LinearLayout.LayoutParams(dp(52), dp(52)))
+            addView(iconBtn("?", cGreen) { showHelp() })
             addView(iconBtn("🐞", cAmber) { showDebug() })
             addView(iconBtn("QR", cBlue) { showQr() })
         }
@@ -365,7 +384,7 @@ class MainActivity : AppCompatActivity() {
             background = glassBg(18)
             setPadding(dp(14), dp(10), dp(14), dp(10))
             maxLines = 2
-            text = "🔍 Nézz rá valamire…"
+            text = "🔍 Még nem látok semmit – irányítsd a kamerát a tévére"
         }
         topBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -375,31 +394,38 @@ class MainActivity : AppCompatActivity() {
         root.addView(topBar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
 
         // ---- időáramkörök + távirányító panel ----
-        val (destRow, dest) = circuit("DESTINATION TIME  ·  CÉL", cRed)
-        val (presRow, pres) = circuit("PRESENT TIME  ·  MOST", cGreen)
-        val (lastRow, last) = circuit("LAST TIME DEPARTED  ·  UTOLSÓ JEL", cAmber)
+        val (destRow, dest) = circuit("CÉL – ezt látja a kamera", cRed)
+        val (presRow, pres) = circuit("MOST – pontos idő", cGreen)
+        val (lastRow, last) = circuit("UTOLSÓ ELKÜLDÖTT JEL", cAmber)
         destTv = dest; presentTv = pres; lastTv = last
-        lastTv.text = "— STANDBY —"
+        lastTv.text = "— MÉG NEM KÜLDTEM —"
 
+        hintTv = TextView(this).apply {
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(0x33FFB000)
+                setStroke(dp(1), 0x88FFB000.toInt())
+            }
+        }
+        controls = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        catTvBtn = neonBtn("📺 Tévé", cOrange) { setCategory(Cat.TV) }
+        catLedBtn = neonBtn("💡 LED lámpa / szalag", cOrange) { setCategory(Cat.LED) }
         brandBtn = neonBtn("", cOrange) { cycleBrand() }
-        scanBtn = neonBtn("🔎 Automata keresés", cBlue) { if (!scanning) startScan() else stopScan(true) }
-        updateBtn = neonBtn("⬆  FRISSÍTÉS", cGreen, strong = true) { onUpdateClick() }
+        scanBtn = neonBtn("🔎 Márka keresése automatikusan", cBlue) { if (!scanning) startScan() else stopScan(true) }
+        updateBtn = neonBtn("⬆  Frissítés keresése", cGreen, strong = true) { onUpdateClick() }
         updateBtn.layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(4), dp(10), dp(4), dp(2)) }
 
         val inner = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(10), dp(14), dp(12))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            addView(hintTv, LinearLayout.LayoutParams(-1, -2))
+            addView(row(catTvBtn, catLedBtn), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+            addView(controls)
+            addView(label("ÁLLAPOT", 11f, 0xFF9AA3B2.toInt(), true), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) })
             addView(destRow); addView(presRow); addView(lastRow)
-            addView(
-                row(
-                    neonBtn("⏻", cRed, strong = true) { send(Key.POWER) },
-                    neonBtn("🔉", cBlue) { send(Key.VOL_DOWN) },
-                    neonBtn("🔊", cBlue) { send(Key.VOL_UP) },
-                    neonBtn("🔇", cBlue) { send(Key.MUTE) }
-                ),
-                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) }
-            )
-            addView(row(brandBtn, scanBtn))
             addView(updateBtn)
         }
         panelScroll = MaxHeightScroll(this).apply {
@@ -417,6 +443,7 @@ class MainActivity : AppCompatActivity() {
             wi
         }
         applyLayout()
+        buildControls()
         refreshUi()
     }
 
@@ -450,10 +477,94 @@ class MainActivity : AppCompatActivity() {
         topGrad.layoutParams = FrameLayout.LayoutParams(-1, t + dp(150), Gravity.TOP)
     }
 
+    /** Egyedi dizájnú távirányító-gomb, egyenlő szélességgel egy sorban. */
+    private fun rk(icon: KeyIcon, label: String, color: Int, k: Key, repeat: Boolean = false) =
+        RemoteKey(this, icon, label, color, repeat) { send(k) }.apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                .apply { setMargins(dp(4), dp(4), dp(4), dp(4)) }
+        }
+
+    /** Az aktuális eszközcsoport (tévé / LED) gombjai. */
+    private fun buildControls() {
+        controls.removeAllViews()
+        (brandBtn.parent as? ViewGroup)?.removeView(brandBtn)
+        (scanBtn.parent as? ViewGroup)?.removeView(scanBtn)
+        val grey = 0xFF9AA3B2.toInt()
+        if (brand.cat == Cat.TV) {
+            controls.addView(
+                RemoteKey(this, KeyIcon.POWER, "BE / KI", cRed, false) { send(Key.POWER) },
+                LinearLayout.LayoutParams(dp(130), dp(112)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(10) }
+            )
+            controls.addView(row(
+                rk(KeyIcon.VOL_DOWN, "Halkabb", cBlue, Key.VOL_DOWN, true),
+                rk(KeyIcon.VOL_UP, "Hangosabb", cBlue, Key.VOL_UP, true),
+                rk(KeyIcon.MUTE, "Némítás", cAmber, Key.MUTE)
+            ))
+            controls.addView(row(brandBtn))
+            controls.addView(
+                label("KIS KURZOR – koppints a nyilakra, vagy húzd az ujjad", 11f, grey, true),
+                LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) }
+            )
+            controls.addView(
+                PadView(this, cBlue) { send(it) },
+                LinearLayout.LayoutParams(dp(200), dp(200)).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(8) }
+            )
+            controls.addView(row(
+                rk(KeyIcon.BACK, "Vissza", cOrange, Key.BACK),
+                rk(KeyIcon.HOME, "Főmenü", cOrange, Key.HOME)
+            ))
+            controls.addView(row(
+                rk(KeyIcon.CH_DOWN, "Csatorna −", cGreen, Key.CH_DOWN, true),
+                rk(KeyIcon.CH_UP, "Csatorna +", cGreen, Key.CH_UP, true)
+            ))
+        } else {
+            controls.addView(row(
+                rk(KeyIcon.BULB, "BE", cGreen, Key.LED_ON),
+                rk(KeyIcon.POWER, "KI", cRed, Key.LED_OFF)
+            ))
+            controls.addView(row(
+                rk(KeyIcon.SUN_DOWN, "Halványabb", cBlue, Key.BRIGHT_DOWN, true),
+                rk(KeyIcon.SUN_UP, "Fényesebb", cBlue, Key.BRIGHT_UP, true)
+            ))
+            controls.addView(
+                label("SZÍNEK", 11f, grey, true),
+                LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) }
+            )
+            controls.addView(row(
+                rk(KeyIcon.SWATCH, "Piros", 0xFFFF3B30.toInt(), Key.RED),
+                rk(KeyIcon.SWATCH, "Zöld", 0xFF34C759.toInt(), Key.GREEN),
+                rk(KeyIcon.SWATCH, "Kék", 0xFF3B82FF.toInt(), Key.BLUE),
+                rk(KeyIcon.SWATCH, "Fehér", 0xFFFFFFFF.toInt(), Key.WHITE)
+            ))
+            controls.addView(row(brandBtn))
+        }
+        controls.addView(row(scanBtn))
+    }
+
+    private fun setCategory(cat: Cat) {
+        if (brand.cat == cat) return
+        if (scanning) stopScan(false)
+        val saved = runCatching {
+            Brand.valueOf(getPreferences(MODE_PRIVATE).getString("brand_${cat.name}", "")!!)
+        }.getOrNull()
+        brand = saved?.takeIf { it.cat == cat } ?: Brand.values().first { it.cat == cat }
+        saveBrand(); buildControls(); refreshUi()
+    }
+
     private fun refreshUi() {
-        brandBtn.text = "Márka: ${brand.label}"
-        destTv.text = "${(topLabel ?: "KERESÉS…").uppercase(Locale.forLanguageTag("hu"))} › ${brand.label.uppercase(Locale.US)}"
-        updateBtn.text = pending?.let { "⬆  ÚJ VERZIÓ ELÉRHETŐ – build ${it.build}" } ?: "⬆  FRISSÍTÉS"
+        brandBtn.text = if (brand.cat == Cat.TV) "📺 TV márka: ${brand.label} ▸" else "💡 Remote típus: ${brand.label} ▸"
+        catTvBtn.background = neon(cOrange, strong = brand.cat == Cat.TV)
+        catLedBtn.background = neon(cOrange, strong = brand.cat == Cat.LED)
+        destTv.text = "${(topLabel ?: "NINCS TALÁLAT").uppercase(Locale.forLanguageTag("hu"))} › ${brand.label.uppercase(Locale.US)}"
+        updateBtn.text = pending?.let { "⬆  Új verzió elérhető – build ${it.build} (koppints)" } ?: "⬆  Frissítés keresése"
+        hintTv.text = when {
+            !hasIr -> "⚠️ Ezen a telefonon nincs infravörös (IR) adó, ezért a gombok nem tudnak jelet küldeni."
+            scanning && brand.cat == Cat.LED -> "👉 Irányítsd a telefon TETEJÉT a LED vezérlője (a kis vevőszem) felé. Típusonként egy KI jelet küldök – amelyiknél a lámpa kikapcsolt, nyomd meg az „Ez reagált – mentés!” gombot. (Előbb kapcsold be a lámpát.)"
+            scanning -> "👉 Irányítsd a telefon TETEJÉT a tévé felé. Márkánként küldök egy Be/Ki jelet. Amelyiknél a tévé reagált, nyomd meg az „Ez reagált – mentés!” gombot."
+            brand.cat == Cat.LED -> "💡 Irányítsd a telefon TETEJÉT a LED lámpa vagy szalag kis vevőszeme felé. Ha nem reagál, váltsd a „Remote típust”, vagy használd az automata keresést."
+            tvSeen -> "📺 Tévét látok. Irányítsd a telefon TETEJÉT a tévé felé, és nyomd meg a BE / KI gombot."
+            else -> "Irányítsd a telefon TETEJÉT a tévé felé, és nyomj egy gombot. Ha a tévé nem reagál, használd a márka automatikus keresését."
+        }
         updateBtn.background = neon(if (pending != null) cAmber else cGreen, strong = true)
         panelScroll.alpha = if (tvSeen) 1f else 0.92f
         flux.active = scanning || tvSeen
@@ -540,11 +651,45 @@ class MainActivity : AppCompatActivity() {
         if (uri?.scheme == "lensmind" && uri.host == "cfg") {
             val b = Brand.values().firstOrNull { it.name == uri.getQueryParameter("brand") }
             if (b != null) {
-                brand = b; saveBrand(); refreshUi(); flux.pulse()
+                brand = b; saveBrand(); buildControls(); refreshUi(); flux.pulse()
                 root.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 toast("QR importálva: ${b.label}")
             }
         } else toast("QR: $raw")
+    }
+
+    // ---- Súgó: mire való az app ----
+    private fun showHelp() {
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val d = glassDialog(content)
+        d.setOnDismissListener { getPreferences(MODE_PRIVATE).edit().putBoolean("help_seen", true).apply() }
+        content.addView(label("MIRE VALÓ EZ AZ APP?", 18f, cOrange, true))
+        content.addView(
+            label(
+                "A telefonodat univerzális infravörös távirányítóvá változtatja. A Xiaomi 15T Pro felső élén van egy IR adó, " +
+                    "ezzel ugyanúgy vezérelhetsz tévét, LED lámpát és LED szalagot, mint a hagyományos távirányítóval.\n\n" +
+                    "MIT TUD\n" +
+                    "• Tévé (LG, Samsung, Sony): be/ki, hangerő, némítás, csatorna, vissza, főmenü\n" +
+                    "• Kis kurzor: koppints a nyilakra, vagy húzd az ujjad a menüben, középen az OK\n" +
+                    "• LED lámpa / szalag (infravörös): be, ki, fényerő, piros–zöld–kék–fehér\n" +
+                    "• A kamera megmutatja, mit lát (pl. Televízió)\n" +
+                    "• Automata keresés: kiderül, melyik márka vagy típus reagál\n" +
+                    "• QR: megosztod az appot vagy a beállításodat\n\n" +
+                    "HOGYAN HASZNÁLD\n" +
+                    "1. Válaszd ki felül, mit vezérelsz (Tévé vagy LED), és irányítsd a telefon felső élét az eszköz felé (1–3 méterről)\n" +
+                    "2. Nyomd meg a BE gombot\n" +
+                    "3. Ha nem történik semmi, nyomd meg a „Márka keresése automatikusan” gombot, és figyeld a tévét. " +
+                    "Amikor reagál, nyomd meg az „Ez reagált – mentés!” gombot\n\n" +
+                    "FELSŐ GOMBOK\n" +
+                    "? – ez a súgó  •  🐞 – hibakereső napló  •  QR – megosztás\n\n" +
+                    "Csak infravörös (IR) eszközöket vezérel. A Bluetooth vagy Wi-Fi okoslámpákhoz (Tuya, Govee, Hue) más app kell. Klíma és hifi később jöhet.",
+                14f, 0xFFE6EAF0.toInt()
+            ),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) }
+        )
+        content.addView(row(neonBtn("Értem", cGreen, strong = true) { d.dismiss() }),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        d.show()
     }
 
     // ---- Debug panel ----
@@ -603,6 +748,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkUpdate(silent: Boolean) {
+        lastUpdateCheck = SystemClock.elapsedRealtime()
         if (!silent) toast("Frissítés keresése…")
         io.execute {
             val res = runCatching { Updater.fetchLatest() }
@@ -628,28 +774,63 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showUpdateDialog(info: Updater.Info) {
+    private fun showUpdateDialog(info: Updater.Info, autoStart: Boolean = false) {
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val d = glassDialog(content)
-        content.addView(label("⬆ ÚJ VERZIÓ", 18f, cGreen, true))
-        content.addView(
-            label("Jelenlegi: build ${BuildConfig.BUILD_NUMBER}\nElérhető: ${info.tag}", 14f),
-            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) }
-        )
-        content.addView(row(
-            neonBtn("Letöltés és telepítés", cGreen, strong = true) {
+        val status = label("Jelenlegi: build ${BuildConfig.BUILD_NUMBER}\nElérhető: ${info.tag}", 14f)
+        val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            visibility = View.GONE
+            progressTintList = ColorStateList.valueOf(cGreen)
+        }
+        lateinit var go: Button
+
+        fun start() {
+            if (!Updater.canInstall(this)) {
                 d.dismiss()
-                if (!Updater.canInstall(this)) {
-                    toast("Engedélyezd a telepítést ennek az appnak, majd nyomd meg újra a Frissítést.")
-                    Updater.openInstallPermission(this)
-                } else {
-                    toast("Letöltés indul – az értesítésekben követheted.")
-                    Updater.downloadAndInstall(this, info)
+                resumeUpdate = true
+                toast("Engedélyezd a telepítést ennek az appnak, utána visszatérve folytatom.")
+                Updater.openInstallPermission(this)
+                return
+            }
+            go.isEnabled = false
+            d.setCancelable(false)
+            bar.visibility = View.VISIBLE
+            bar.progress = 0
+            status.text = "Letöltés… 0%"
+            io.execute {
+                val r = runCatching {
+                    Updater.downloadApk(this, info) { pct ->
+                        runOnUiThread { bar.progress = pct; status.text = "Letöltés… $pct%" }
+                    }
                 }
-            },
-            neonBtn("Később", cRed) { d.dismiss() }
-        ), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+                runOnUiThread {
+                    r.onSuccess { f ->
+                        status.text = "Kész. Erősítsd meg a telepítést a megjelenő ablakban."
+                        Updater.install(this, f)
+                        handler.postDelayed({ if (d.isShowing) d.dismiss() }, 1500)
+                    }
+                    r.onFailure {
+                        Logger.e("upd", "letöltés", it)
+                        status.text = "Nem sikerült: ${it.message}"
+                        go.isEnabled = true
+                        d.setCancelable(true)
+                        bar.visibility = View.GONE
+                    }
+                }
+            }
+        }
+
+        go = neonBtn("Letöltés és telepítés", cGreen, strong = true) { start() }
+        content.addView(label("⬆ ÚJ VERZIÓ", 18f, cGreen, true))
+        content.addView(status, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        content.addView(bar, LinearLayout.LayoutParams(-1, dp(10)).apply { topMargin = dp(10) })
+        content.addView(
+            row(go, neonBtn("Később", cRed) { if (go.isEnabled) d.dismiss() }),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) }
+        )
         d.show()
+        if (autoStart) start()
     }
 
     // =====================================================================
@@ -706,8 +887,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showLabels(names: List<String>) {
         topLabel = names.firstOrNull()?.let { hu[it] ?: it }
-        chips.text = if (names.isEmpty()) "🔍 Nézz rá valamire…"
-        else "🔍 " + names.take(4).joinToString("  •  ") { hu[it] ?: it }
+        chips.text = if (names.isEmpty()) "🔍 Még nem látok semmit – irányítsd a kamerát a tévére"
+        else "🔍 A kamera ezt látja: " + names.take(4).joinToString("  •  ") { hu[it] ?: it }
         val wasTv = tvSeen
         tvSeen = names.any { it in tvLabels }
         if (tvSeen && !wasTv) { flux.pulse(); Logger.d("lens", "TV észlelve") }
@@ -722,7 +903,9 @@ class MainActivity : AppCompatActivity() {
         if (m == null || !runCatching { m.hasIrEmitter() }.getOrDefault(false)) {
             Logger.d("ir", "nincs IR adó"); toast("Ezen a telefonon nincs IR adó."); return
         }
-        runCatching { m.transmit(b.carrier, IrCodes.pattern(b, k)) }
+        val pat = IrCodes.pattern(b, k)
+        if (pat == null) { toast("Ehhez az eszközhöz ez a gomb nincs beállítva."); return }
+        runCatching { m.transmit(b.carrier, pat) }
             .onFailure { Logger.e("ir", "küldés", it); toast("IR hiba: ${it.message}") }
             .onSuccess {
                 Logger.d("ir", "${b.label} $k")
@@ -733,27 +916,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cycleBrand() {
-        brand = Brand.values()[(brand.ordinal + 1) % Brand.values().size]
+        val list = Brand.values().filter { it.cat == brand.cat }
+        brand = list[(list.indexOf(brand) + 1) % list.size]
         saveBrand(); refreshUi()
     }
 
-    private fun saveBrand() = getPreferences(MODE_PRIVATE).edit().putString("brand", brand.name).apply()
+    private fun saveBrand() = getPreferences(MODE_PRIVATE).edit()
+        .putString("brand", brand.name).putString("brand_${brand.cat.name}", brand.name).apply()
 
     private val scanStep = object : Runnable {
         override fun run() {
             if (!scanning) return
-            brand = Brand.values()[scanIdx % Brand.values().size]
+            val list = Brand.values().filter { it.cat == brand.cat }
+            brand = list[scanIdx % list.size]
             scanIdx++
             refreshUi()
-            send(Key.POWER, brand)
+            send(if (brand.cat == Cat.LED) Key.LED_OFF else Key.POWER, brand)
             handler.postDelayed(this, 1800)
         }
     }
 
     private fun startScan() {
         scanning = true
-        scanBtn.text = "✅ Ez reagált!"
-        toast("Irányítsd a TV felé – márkánként küldök egy Power jelet.")
+        scanIdx = 0
+        scanBtn.text = "✅ Ez reagált – mentés!"
+        toast("Irányítsd az eszköz felé – típusonként küldök egy jelet.")
         Logger.d("ir", "automata keresés indul")
         refreshUi()
         handler.post(scanStep)
@@ -762,7 +949,7 @@ class MainActivity : AppCompatActivity() {
     private fun stopScan(saveChoice: Boolean) {
         scanning = false
         handler.removeCallbacks(scanStep)
-        scanBtn.text = "🔎 Automata keresés"
+        scanBtn.text = "🔎 Márka keresése automatikusan"
         if (saveChoice) { saveBrand(); toast("Mentve: ${brand.label}") }
         Logger.d("ir", "automata keresés leáll, márka=${brand.name}, mentve=$saveChoice")
         refreshUi()
