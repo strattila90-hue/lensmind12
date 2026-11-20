@@ -9,6 +9,7 @@ Kamera → offline képfelismerés (ML Kit) → IR távirányító. "Vissza a j�
 
 ## Funkciók
 - ⏻ 🔉 🔊 🔇 – IR távirányító (LG / Samsung / Sony), automata márkakeresés
+- Ezüst univerzális távirányító-dizájn beépített kék LCD kijelzővel (üzemmód, óra, utolsó parancs, kamera, IR jelző)
 - 🐞 Debug – napló, eszközinfó, összeomlás-napló, másolás/küldés
 - QR – alkalmazás-letöltő link és beállítás-profil megosztása; a kamera beolvassa a profil-QR-t
 - ⬆ FRISSÍTÉS – a legfrissebb Release-t tölti le és telepíti (új verziónál a gomb borostyánra vált)
