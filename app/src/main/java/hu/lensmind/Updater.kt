@@ -1,21 +1,16 @@
 package hu.lensmind
 
-import android.app.DownloadManager
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.net.Uri
 import android.provider.Settings
-import android.widget.Toast
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** Frissítés a GitHub Releases-ből (a GitHub Actions bot tölti fel az APK-t). */
+/** Frissítés a GitHub Releases-ből – a letöltés az appon belül, folyamatjelzővel történik. */
 object Updater {
 
     data class Info(val build: Int, val tag: String, val apkUrl: String, val notes: String)
@@ -28,7 +23,7 @@ object Updater {
         c.connectTimeout = 8000
         c.readTimeout = 8000
         try {
-            Logger.d("upd", "GET ${url} -> ${c.responseCode}")
+            Logger.d("upd", "GET $url -> ${c.responseCode}")
             if (c.responseCode == 404) return null
             if (c.responseCode != 200) throw IllegalStateException("HTTP ${c.responseCode}")
             val j = JSONObject(c.inputStream.bufferedReader().readText())
@@ -55,43 +50,43 @@ object Updater {
         )
     }
 
-    fun downloadAndInstall(ctx: Context, info: Info) {
-        val app = ctx.applicationContext
-        val dm = app.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val file = File(app.getExternalFilesDir(null), "update.apk")
+    /** Blokkoló – háttérszálról hívd. A haladást 0..100 közötti százalékban jelzi. */
+    fun downloadApk(ctx: Context, info: Info, onProgress: (Int) -> Unit): File {
+        val file = File(ctx.getExternalFilesDir(null), "update.apk")
         if (file.exists()) file.delete()
-        val req = DownloadManager.Request(Uri.parse(info.apkUrl))
-            .setTitle("Lens Mind ${info.tag}")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-            .setDestinationUri(Uri.fromFile(file))
-        val id = dm.enqueue(req)
-        Logger.d("upd", "letöltés indul id=$id ${info.apkUrl}")
-
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(c: Context, i: Intent) {
-                if (i.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) != id) return
-                runCatching { app.unregisterReceiver(this) }
-                dm.query(DownloadManager.Query().setFilterById(id)).use { cur ->
-                    val ok = cur.moveToFirst() &&
-                        cur.getInt(cur.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) ==
-                        DownloadManager.STATUS_SUCCESSFUL
-                    if (!ok) {
-                        Logger.d("upd", "letöltés sikertelen")
-                        Toast.makeText(app, "A letöltés nem sikerült.", Toast.LENGTH_LONG).show()
-                        return
+        val c = URL(info.apkUrl).openConnection() as HttpURLConnection
+        c.connectTimeout = 10000
+        c.readTimeout = 20000
+        try {
+            if (c.responseCode != 200) throw IllegalStateException("HTTP ${c.responseCode}")
+            val total = c.contentLengthLong
+            Logger.d("upd", "letöltés indul, ${total / 1024} KB")
+            c.inputStream.use { input ->
+                file.outputStream().use { out ->
+                    val buf = ByteArray(32 * 1024)
+                    var done = 0L
+                    var last = -1
+                    var n = input.read(buf)
+                    while (n != -1) {
+                        out.write(buf, 0, n)
+                        done += n
+                        if (total > 0) {
+                            val pct = (done * 100 / total).toInt()
+                            if (pct != last) { last = pct; onProgress(pct) }
+                        }
+                        n = input.read(buf)
                     }
                 }
-                Logger.d("upd", "letöltve, telepítés indul")
-                install(app, file)
             }
+        } finally {
+            c.disconnect()
         }
-        ContextCompat.registerReceiver(
-            app, receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            ContextCompat.RECEIVER_EXPORTED
-        )
+        if (file.length() < 100_000) throw IllegalStateException("a letöltött fájl túl kicsi (${file.length()} bájt)")
+        Logger.d("upd", "letöltve: ${file.length() / 1024} KB")
+        return file
     }
 
-    private fun install(ctx: Context, file: File) {
+    fun install(ctx: Context, file: File) {
         val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
         val i = Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, "application/vnd.android.package-archive")

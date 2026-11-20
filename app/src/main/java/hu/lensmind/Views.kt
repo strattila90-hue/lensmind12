@@ -18,6 +18,7 @@ import android.widget.ScrollView
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -209,5 +210,227 @@ class PadView(c: Context, private val accent: Int, private val onKey: (Key) -> U
         p.textSize = r * 0.22f
         p.typeface = Typeface.DEFAULT_BOLD
         canvas.drawText("OK", cx, cy + p.textSize * 0.35f, p)
+    }
+}
+
+enum class KeyIcon { POWER, VOL_UP, VOL_DOWN, MUTE, CH_UP, CH_DOWN, BACK, HOME, BULB, SUN_UP, SUN_DOWN, SWATCH }
+
+/**
+ * Egyedi dizájnú távirányító-gomb: neon keretes, kézzel rajzolt ikonnal.
+ * Lenyomáskor összehúzódik és felizzik. A `repeat` gombok nyomva tartva ismétlődnek (hangerő, fényerő, csatorna).
+ */
+class RemoteKey(
+    c: Context,
+    private val icon: KeyIcon,
+    private val label: String,
+    private val accent: Int,
+    private val repeat: Boolean = false,
+    private val onPress: () -> Unit
+) : View(c) {
+    private val d = resources.displayMetrics.density
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val path = Path()
+    private val rect = RectF()
+    private val oval = RectF()
+    private var down = false
+    private var repeating = false
+
+    private val startRepeat = object : Runnable {
+        override fun run() {
+            repeating = true
+            fire()
+            postDelayed(this, 150)
+        }
+    }
+
+    private fun fire() {
+        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+        onPress()
+    }
+
+    private fun withA(c: Int, a: Int) = (c and 0x00FFFFFF) or (a.coerceIn(0, 255) shl 24)
+
+    override fun onMeasure(ws: Int, hs: Int) {
+        val w = MeasureSpec.getSize(ws)
+        val h = if (MeasureSpec.getMode(hs) == MeasureSpec.EXACTLY) MeasureSpec.getSize(hs)
+        else (w * 0.9f).coerceIn(68f * d, 96f * d).toInt()
+        setMeasuredDimension(w, h)
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                down = true; repeating = false; invalidate()
+                if (repeat) postDelayed(startRepeat, 420)
+            }
+            MotionEvent.ACTION_UP -> {
+                removeCallbacks(startRepeat)
+                val inside = e.x in 0f..width.toFloat() && e.y in 0f..height.toFloat()
+                if (down && !repeating && inside) fire()
+                down = false; repeating = false; invalidate()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                removeCallbacks(startRepeat)
+                down = false; repeating = false; invalidate()
+            }
+        }
+        return true
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val sc = if (down) 0.93f else 1f
+        canvas.save()
+        canvas.scale(sc, sc, w / 2f, h / 2f)
+
+        val inset = 7f * d
+        rect.set(inset, inset, w - inset, h - inset)
+        val cr = min(w, h) * 0.28f
+        val boost = if (down) 1.7f else 1f
+
+        // fény-gyűrűk (glow)
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 9f * d
+        p.color = withA(accent, (26 * boost).toInt())
+        canvas.drawRoundRect(rect, cr, cr, p)
+        p.strokeWidth = 5f * d
+        p.color = withA(accent, (60 * boost).toInt())
+        canvas.drawRoundRect(rect, cr, cr, p)
+
+        // gomb teste
+        p.style = Paint.Style.FILL
+        p.shader = LinearGradient(
+            0f, rect.top, 0f, rect.bottom,
+            if (down) withA(accent, 110) else 0xFF1C2431.toInt(), 0xFF090C11.toInt(), Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(rect, cr, cr, p)
+        p.shader = null
+
+        // neon keret
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 2.2f * d
+        p.color = accent
+        canvas.drawRoundRect(rect, cr, cr, p)
+
+        // ikon + felirat
+        val hasLabel = label.isNotEmpty()
+        drawIcon(canvas, w / 2f, if (hasLabel) h * 0.40f else h / 2f, min(w, h) * 0.2f)
+        if (hasLabel) {
+            p.style = Paint.Style.FILL
+            p.color = 0xFFD5DBE6.toInt()
+            p.textAlign = Paint.Align.CENTER
+            p.typeface = Typeface.DEFAULT_BOLD
+            var ts = min(w, h) * 0.15f
+            p.textSize = ts
+            while (p.measureText(label) > w * 0.8f && ts > 8f * d) { ts -= 1f; p.textSize = ts }
+            canvas.drawText(label, w / 2f, h * 0.84f, p)
+        }
+        canvas.restore()
+    }
+
+    private fun drawIcon(canvas: Canvas, cx: Float, cy: Float, s: Float) {
+        val ink = 0xFFF2F5FA.toInt()
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = max(2.5f * d, s * 0.2f)
+        p.color = ink
+        when (icon) {
+            KeyIcon.POWER -> {
+                oval.set(cx - s, cy - s, cx + s, cy + s)
+                canvas.drawArc(oval, -60f, 300f, false, p)
+                canvas.drawLine(cx, cy - s * 1.15f, cx, cy - s * 0.1f, p)
+            }
+            KeyIcon.VOL_UP, KeyIcon.VOL_DOWN, KeyIcon.MUTE -> {
+                val sx = cx - s * 0.4f
+                path.reset()
+                path.moveTo(sx - s * 0.6f, cy - s * 0.35f)
+                path.lineTo(sx - s * 0.2f, cy - s * 0.35f)
+                path.lineTo(sx + s * 0.35f, cy - s * 0.8f)
+                path.lineTo(sx + s * 0.35f, cy + s * 0.8f)
+                path.lineTo(sx - s * 0.2f, cy + s * 0.35f)
+                path.lineTo(sx - s * 0.6f, cy + s * 0.35f)
+                path.close()
+                canvas.drawPath(path, p)
+                val ax = sx + s * 0.35f
+                if (icon == KeyIcon.MUTE) {
+                    canvas.drawLine(ax + s * 0.3f, cy - s * 0.45f, ax + s * 0.95f, cy + s * 0.45f, p)
+                    canvas.drawLine(ax + s * 0.3f, cy + s * 0.45f, ax + s * 0.95f, cy - s * 0.45f, p)
+                } else {
+                    oval.set(ax - s * 0.5f, cy - s * 0.5f, ax + s * 0.5f, cy + s * 0.5f)
+                    canvas.drawArc(oval, -45f, 90f, false, p)
+                    if (icon == KeyIcon.VOL_UP) {
+                        oval.set(ax - s * 0.95f, cy - s * 0.95f, ax + s * 0.95f, cy + s * 0.95f)
+                        canvas.drawArc(oval, -45f, 90f, false, p)
+                    }
+                }
+            }
+            KeyIcon.CH_UP, KeyIcon.CH_DOWN -> {
+                val dir = if (icon == KeyIcon.CH_UP) -1f else 1f
+                for (y in floatArrayOf(cy - s * 0.45f, cy + s * 0.3f)) {
+                    path.reset()
+                    path.moveTo(cx - s * 0.8f, y - dir * s * 0.3f)
+                    path.lineTo(cx, y + dir * s * 0.4f)
+                    path.lineTo(cx + s * 0.8f, y - dir * s * 0.3f)
+                    canvas.drawPath(path, p)
+                }
+            }
+            KeyIcon.BACK -> {
+                canvas.drawLine(cx + s * 0.9f, cy, cx - s * 0.8f, cy, p)
+                path.reset()
+                path.moveTo(cx - s * 0.2f, cy - s * 0.6f)
+                path.lineTo(cx - s * 0.8f, cy)
+                path.lineTo(cx - s * 0.2f, cy + s * 0.6f)
+                canvas.drawPath(path, p)
+            }
+            KeyIcon.HOME -> {
+                path.reset()
+                path.moveTo(cx - s, cy - s * 0.05f)
+                path.lineTo(cx, cy - s * 0.95f)
+                path.lineTo(cx + s, cy - s * 0.05f)
+                canvas.drawPath(path, p)
+                path.reset()
+                path.moveTo(cx - s * 0.7f, cy - s * 0.1f)
+                path.lineTo(cx - s * 0.7f, cy + s * 0.85f)
+                path.lineTo(cx + s * 0.7f, cy + s * 0.85f)
+                path.lineTo(cx + s * 0.7f, cy - s * 0.1f)
+                canvas.drawPath(path, p)
+            }
+            KeyIcon.BULB -> {
+                oval.set(cx - s * 0.62f, cy - s * 0.95f, cx + s * 0.62f, cy + s * 0.29f)
+                p.style = Paint.Style.FILL
+                p.color = withA(accent, 110)
+                canvas.drawOval(oval, p)
+                p.style = Paint.Style.STROKE
+                p.color = ink
+                canvas.drawOval(oval, p)
+                canvas.drawLine(cx - s * 0.32f, cy + s * 0.6f, cx + s * 0.32f, cy + s * 0.6f, p)
+                canvas.drawLine(cx - s * 0.22f, cy + s * 0.92f, cx + s * 0.22f, cy + s * 0.92f, p)
+            }
+            KeyIcon.SUN_UP, KeyIcon.SUN_DOWN -> {
+                if (icon == KeyIcon.SUN_DOWN) p.color = withA(ink, 170)
+                canvas.drawCircle(cx, cy, s * 0.4f, p)
+                val inner = s * 0.68f
+                val outer = if (icon == KeyIcon.SUN_UP) s * 1.0f else s * 0.85f
+                for (i in 0 until 8) {
+                    val a = Math.toRadians(i * 45.0)
+                    canvas.drawLine(
+                        cx + (cos(a) * inner).toFloat(), cy + (sin(a) * inner).toFloat(),
+                        cx + (cos(a) * outer).toFloat(), cy + (sin(a) * outer).toFloat(), p
+                    )
+                }
+            }
+            KeyIcon.SWATCH -> {
+                p.style = Paint.Style.FILL
+                p.color = accent
+                canvas.drawCircle(cx, cy, s * 0.85f, p)
+                p.style = Paint.Style.STROKE
+                p.strokeWidth = 2f * d
+                p.color = 0x88FFFFFF.toInt()
+                canvas.drawCircle(cx, cy, s * 0.85f, p)
+            }
+        }
     }
 }
