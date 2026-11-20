@@ -25,7 +25,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Size
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.Surface
@@ -55,7 +54,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.widget.TextViewCompat
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -70,7 +68,7 @@ import java.util.concurrent.Executors
 import kotlin.math.min
 
 /**
- * Lens Mind + Remote – "Vissza a jövőbe" időáramkör-dizájn, modern üveg-neon köntösben.
+ * Lens Mind + Remote – "Vissza a jövőbe" fejléc, alatta ezüst univerzális távirányító beépített LCD kijelzővel.
  * Minden kijelzőhöz igazodik: telefon, hajtogatható, tablet, álló/fekvő, kivágás (notch), többablakos mód.
  */
 class MainActivity : AppCompatActivity() {
@@ -90,9 +88,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var chips: TextView
     private lateinit var flux: FluxView
     private lateinit var panelScroll: MaxHeightScroll
-    private lateinit var destTv: TextView
-    private lateinit var presentTv: TextView
-    private lateinit var lastTv: TextView
+    private lateinit var lcd: LcdView
     private lateinit var brandBtn: Button
     private lateinit var scanBtn: Button
     private lateinit var updateBtn: Button
@@ -119,6 +115,8 @@ class MainActivity : AppCompatActivity() {
     private var lastUpdateCheck = -1L
     private var lastQr = ""
     private var lastQrAt = 0L
+    private var lastCmd = "KÉSZ"
+    private var lastCmdAt = ""
 
     private val handler = Handler(Looper.getMainLooper())
     private val exec = Executors.newSingleThreadExecutor()
@@ -141,10 +139,10 @@ class MainActivity : AppCompatActivity() {
         "Book" to "Könyv", "Laptop" to "Laptop", "Chair" to "Szék", "Window" to "Ablak"
     )
 
-    private val clockFmt = SimpleDateFormat("MMM dd yyyy  HH:mm:ss", Locale.US)
+    private val clockFmt = SimpleDateFormat("HH:mm:ss", Locale.US)
     private val clock = object : Runnable {
         override fun run() {
-            presentTv.text = clockFmt.format(Date()).uppercase(Locale.US)
+            lcd.clock = clockFmt.format(Date())
             handler.postDelayed(this, 1000)
         }
     }
@@ -282,42 +280,21 @@ class MainActivity : AppCompatActivity() {
         v.forEach { addView(it) }
     }
 
-    /** Időáramkör-sor: kis címke + világító kijelző. */
-    private fun circuit(label: String, color: Int): Pair<View, TextView> {
-        val lab = TextView(this).apply {
-            text = label
-            textSize = 11f
-            setTextColor(0xFFE8E8E8.toInt())
-            letterSpacing = 0.04f
-            typeface = Typeface.DEFAULT_BOLD
+    /** Sötét gumi gomb a távirányító előlapján, színes LED-szegéllyel. */
+    private fun remoteBg(color: Int, strong: Boolean = false): Drawable {
+        val g = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            if (strong) intArrayOf((color and 0x00FFFFFF) or 0x66000000, 0xFF15181C.toInt())
+            else intArrayOf(0xFF383E46.toInt(), 0xFF17191D.toInt())
+        ).apply {
+            cornerRadius = dp(22).toFloat()
+            setStroke(dp(if (strong) 2 else 1), if (strong) color else (color and 0x00FFFFFF) or 0x99000000.toInt())
         }
-        val disp = TextView(this).apply {
-            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
-            setTextColor(color)
-            setShadowLayer(dp(10).toFloat(), 0f, 0f, color)
-            gravity = Gravity.CENTER
-            maxLines = 1
-            letterSpacing = 0.06f
-            setPadding(dp(10), 0, dp(10), 0)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(8).toFloat()
-                setColor(0xFF0B0505.toInt())
-                setStroke(dp(1), (color and 0x00FFFFFF) or 0x66000000)
-            }
-            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                this, 10, 22, 1, TypedValue.COMPLEX_UNIT_SP
-            )
-        }
-        val col = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(lab)
-            addView(disp, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40)))
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
-        }
-        return col to disp
+        return RippleDrawable(ColorStateList.valueOf((color and 0x00FFFFFF) or 0x55000000), g, null)
     }
+
+    private fun remoteBtn(t: String, color: Int, onClick: (View) -> Unit) =
+        neonBtn(t, color, onClick = onClick).apply { background = remoteBg(color); textSize = 15f }
 
     private fun chrome(tv: TextView) {
         tv.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
@@ -393,12 +370,8 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(topBar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
 
-        // ---- időáramkörök + távirányító panel ----
-        val (destRow, dest) = circuit("CÉL – ezt látja a kamera", cRed)
-        val (presRow, pres) = circuit("MOST – pontos idő", cGreen)
-        val (lastRow, last) = circuit("UTOLSÓ ELKÜLDÖTT JEL", cAmber)
-        destTv = dest; presentTv = pres; lastTv = last
-        lastTv.text = "— MÉG NEM KÜLDTEM —"
+        // ---- távirányító: ház + beépített kijelző ----
+        lcd = LcdView(this).apply { clock = clockFmt.format(Date()) }
 
         hintTv = TextView(this).apply {
             textSize = 14f
@@ -411,25 +384,24 @@ class MainActivity : AppCompatActivity() {
             }
         }
         controls = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        catTvBtn = neonBtn("📺 Tévé", cOrange) { setCategory(Cat.TV) }
-        catLedBtn = neonBtn("💡 LED lámpa / szalag", cOrange) { setCategory(Cat.LED) }
-        brandBtn = neonBtn("", cOrange) { cycleBrand() }
-        scanBtn = neonBtn("🔎 Márka keresése automatikusan", cBlue) { if (!scanning) startScan() else stopScan(true) }
-        updateBtn = neonBtn("⬆  Frissítés keresése", cGreen, strong = true) { onUpdateClick() }
+        catTvBtn = remoteBtn("📺 Tévé", cBlue) { setCategory(Cat.TV) }
+        catLedBtn = remoteBtn("💡 LED lámpa / szalag", cBlue) { setCategory(Cat.LED) }
+        brandBtn = remoteBtn("", cOrange) { cycleBrand() }
+        scanBtn = remoteBtn("🔎 Márka keresése automatikusan", cBlue) { if (!scanning) startScan() else stopScan(true) }
+        updateBtn = remoteBtn("⬆  Frissítés keresése", cGreen) { onUpdateClick() }
         updateBtn.layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(4), dp(10), dp(4), dp(2)) }
 
         val inner = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            addView(hintTv, LinearLayout.LayoutParams(-1, -2))
+            setPadding(dp(22), dp(34), dp(22), dp(24))
+            addView(lcd, LinearLayout.LayoutParams(-1, -2))
+            addView(hintTv, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
             addView(row(catTvBtn, catLedBtn), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
             addView(controls)
-            addView(label("ÁLLAPOT", 11f, 0xFF9AA3B2.toInt(), true), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) })
-            addView(destRow); addView(presRow); addView(lastRow)
             addView(updateBtn)
         }
         panelScroll = MaxHeightScroll(this).apply {
-            background = glassBg(26)
+            background = RemoteShellDrawable(resources.displayMetrics.density)
             isVerticalScrollBarEnabled = false
             addView(inner)
         }
@@ -553,9 +525,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshUi() {
         brandBtn.text = if (brand.cat == Cat.TV) "📺 TV márka: ${brand.label} ▸" else "💡 Remote típus: ${brand.label} ▸"
-        catTvBtn.background = neon(cOrange, strong = brand.cat == Cat.TV)
-        catLedBtn.background = neon(cOrange, strong = brand.cat == Cat.LED)
-        destTv.text = "${(topLabel ?: "NINCS TALÁLAT").uppercase(Locale.forLanguageTag("hu"))} › ${brand.label.uppercase(Locale.US)}"
+        catTvBtn.background = remoteBg(cBlue, strong = brand.cat == Cat.TV)
+        catLedBtn.background = remoteBg(cBlue, strong = brand.cat == Cat.LED)
+        val huLoc = Locale.forLanguageTag("hu")
+        lcd.mode = "${if (brand.cat == Cat.TV) "TV" else "LED"} · ${brand.label.uppercase(Locale.US)}"
+        lcd.sub = "CAM: ${(topLabel ?: "—").uppercase(huLoc)}"
+        when {
+            !hasIr -> { lcd.main = "NINCS IR ADÓ"; lcd.caption = "csak kijelző mód" }
+            scanning -> { lcd.main = "KERESÉS…"; lcd.caption = "próba: ${brand.label}" }
+            else -> { lcd.main = lastCmd; lcd.caption = lastCmdAt }
+        }
         updateBtn.text = pending?.let { "⬆  Új verzió elérhető – build ${it.build} (koppints)" } ?: "⬆  Frissítés keresése"
         hintTv.text = when {
             !hasIr -> "⚠️ Ezen a telefonon nincs infravörös (IR) adó, ezért a gombok nem tudnak jelet küldeni."
@@ -565,7 +544,7 @@ class MainActivity : AppCompatActivity() {
             tvSeen -> "📺 Tévét látok. Irányítsd a telefon TETEJÉT a tévé felé, és nyomd meg a BE / KI gombot."
             else -> "Irányítsd a telefon TETEJÉT a tévé felé, és nyomj egy gombot. Ha a tévé nem reagál, használd a márka automatikus keresését."
         }
-        updateBtn.background = neon(if (pending != null) cAmber else cGreen, strong = true)
+        updateBtn.background = remoteBg(if (pending != null) cAmber else cGreen, strong = pending != null)
         panelScroll.alpha = if (tvSeen) 1f else 0.92f
         flux.active = scanning || tvSeen
     }
@@ -909,10 +888,22 @@ class MainActivity : AppCompatActivity() {
             .onFailure { Logger.e("ir", "küldés", it); toast("IR hiba: ${it.message}") }
             .onSuccess {
                 Logger.d("ir", "${b.label} $k")
-                lastTv.text = "${b.label.uppercase(Locale.US)} ${k.name.replace('_', ' ')}  " +
-                    SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+                lastCmd = lcdName(k)
+                lastCmdAt = "${b.label} · elküldve ${clockFmt.format(Date())}"
+                if (!scanning) { lcd.main = lastCmd; lcd.caption = lastCmdAt }
+                lcd.flash()
                 flux.pulse()
             }
+    }
+
+    /** Rövid, nagybetűs parancsnév a kijelzőre. */
+    private fun lcdName(k: Key) = when (k) {
+        Key.POWER -> "BE / KI"; Key.VOL_UP -> "HANGERŐ +"; Key.VOL_DOWN -> "HANGERŐ −"
+        Key.MUTE -> "NÉMÍTÁS"; Key.UP -> "▲ FEL"; Key.DOWN -> "▼ LE"; Key.LEFT -> "◀ BALRA"
+        Key.RIGHT -> "JOBBRA ▶"; Key.OK -> "OK"; Key.BACK -> "VISSZA"; Key.HOME -> "FŐMENÜ"
+        Key.CH_UP -> "CSATORNA +"; Key.CH_DOWN -> "CSATORNA −"; Key.LED_ON -> "LÁMPA BE"
+        Key.LED_OFF -> "LÁMPA KI"; Key.BRIGHT_UP -> "FÉNYERŐ +"; Key.BRIGHT_DOWN -> "FÉNYERŐ −"
+        Key.RED -> "PIROS"; Key.GREEN -> "ZÖLD"; Key.BLUE -> "KÉK"; Key.WHITE -> "FEHÉR"
     }
 
     private fun cycleBrand() {

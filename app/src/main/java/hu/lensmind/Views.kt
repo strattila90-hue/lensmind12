@@ -3,6 +3,10 @@ package hu.lensmind
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.ColorFilter
+import android.graphics.PixelFormat
+import android.graphics.RadialGradient
+import android.graphics.drawable.Drawable
 import android.graphics.Color
 import android.graphics.Path
 import android.graphics.RectF
@@ -15,6 +19,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.animation.LinearInterpolator
 import android.widget.ScrollView
+import kotlin.random.Random
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -173,41 +178,72 @@ class PadView(c: Context, private val accent: Int, private val onKey: (Key) -> U
         val h = height.toFloat()
         val cx = w / 2f
         val cy = h / 2f
-        val r = min(w, h) / 2f
-        rect.set(cx - r + 3f, cy - r + 3f, cx + r - 3f, cy + r - 3f)
-        p.style = Paint.Style.FILL
-        p.color = 0x1AFFFFFF
-        canvas.drawRoundRect(rect, r * 0.45f, r * 0.45f, p)
+        val r = min(w, h) / 2f - 3f
+        val d = resources.displayMetrics.density
+
+        // külső fény (háttérvilágítás)
         p.style = Paint.Style.STROKE
-        p.strokeWidth = 3f
-        p.color = accent
-        canvas.drawRoundRect(rect, r * 0.45f, r * 0.45f, p)
+        p.shader = null
+        p.strokeWidth = 8f * d
+        p.color = (accent and 0x00FFFFFF) or 0x30000000
+        canvas.drawCircle(cx, cy, r - 4f * d, p)
+
+        // krómgyűrű
+        p.style = Paint.Style.FILL
+        p.shader = LinearGradient(
+            0f, cy - r, 0f, cy + r,
+            intArrayOf(0xFFFFFFFF.toInt(), 0xFFB9C0C8.toInt(), 0xFF6C737C.toInt(), 0xFFDDE2E8.toInt()),
+            floatArrayOf(0f, 0.45f, 0.55f, 1f), Shader.TileMode.CLAMP
+        )
+        canvas.drawCircle(cx, cy, r - 6f * d, p)
+
+        // sötét gumi tárcsa
+        p.shader = RadialGradient(cx, cy - r * 0.3f, r, 0xFF3A4049.toInt(), 0xFF121418.toInt(), Shader.TileMode.CLAMP)
+        canvas.drawCircle(cx, cy, r - 10f * d, p)
+        p.shader = null
 
         val keys = arrayOf(Key.UP, Key.RIGHT, Key.DOWN, Key.LEFT)
         for (i in 0..3) {
             canvas.save()
             canvas.rotate(90f * i, cx, cy)
             path.reset()
-            path.moveTo(cx, cy - r * 0.82f)
-            path.lineTo(cx - r * 0.17f, cy - r * 0.56f)
-            path.lineTo(cx + r * 0.17f, cy - r * 0.56f)
+            path.moveTo(cx, cy - r * 0.78f)
+            path.lineTo(cx - r * 0.16f, cy - r * 0.55f)
+            path.lineTo(cx + r * 0.16f, cy - r * 0.55f)
             path.close()
+            val on = pressed == keys[i]
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = 6f * d
+            p.color = (accent and 0x00FFFFFF) or (if (on) 0xAA000000.toInt() else 0x44000000)
+            canvas.drawPath(path, p)
             p.style = Paint.Style.FILL
-            p.color = if (pressed == keys[i]) Color.WHITE else accent
+            p.color = if (on) Color.WHITE else accent
             canvas.drawPath(path, p)
             canvas.restore()
         }
 
+        // középső OK: domború ezüst gomb
+        val okR = r * 0.32f
         p.style = Paint.Style.FILL
-        p.color = if (pressed == Key.OK) 0x88FFFFFF.toInt() else (accent and 0x00FFFFFF) or 0x33000000
-        canvas.drawCircle(cx, cy, r * 0.3f, p)
+        p.color = 0x66000000
+        canvas.drawCircle(cx, cy + 2f * d, okR, p)
+        p.shader = if (pressed == Key.OK)
+            RadialGradient(cx, cy, okR, Color.WHITE, accent, Shader.TileMode.CLAMP)
+        else LinearGradient(
+            0f, cy - okR, 0f, cy + okR,
+            intArrayOf(0xFFF7F9FB.toInt(), 0xFFC9CFD6.toInt(), 0xFF8D949D.toInt()),
+            null, Shader.TileMode.CLAMP
+        )
+        canvas.drawCircle(cx, cy, okR, p)
+        p.shader = null
         p.style = Paint.Style.STROKE
+        p.strokeWidth = 1.5f * d
         p.color = accent
-        canvas.drawCircle(cx, cy, r * 0.3f, p)
+        canvas.drawCircle(cx, cy, okR, p)
         p.style = Paint.Style.FILL
-        p.color = Color.WHITE
+        p.color = 0xFF1B1F25.toInt()
         p.textAlign = Paint.Align.CENTER
-        p.textSize = r * 0.22f
+        p.textSize = r * 0.2f
         p.typeface = Typeface.DEFAULT_BOLD
         canvas.drawText("OK", cx, cy + p.textSize * 0.35f, p)
     }
@@ -216,7 +252,7 @@ class PadView(c: Context, private val accent: Int, private val onKey: (Key) -> U
 enum class KeyIcon { POWER, VOL_UP, VOL_DOWN, MUTE, CH_UP, CH_DOWN, BACK, HOME, BULB, SUN_UP, SUN_DOWN, SWATCH }
 
 /**
- * Egyedi dizájnú távirányító-gomb: neon keretes, kézzel rajzolt ikonnal.
+ * Univerzális távirányító-gomb: domború gumi gomb fényes peremmel, háttérvilágítású ikonnal és LED-csíkkal.
  * Lenyomáskor összehúzódik és felizzik. A `repeat` gombok nyomva tartva ismétlődnek (hangerő, fényerő, csatorna).
  */
 class RemoteKey(
@@ -287,38 +323,57 @@ class RemoteKey(
         canvas.save()
         canvas.scale(sc, sc, w / 2f, h / 2f)
 
-        val inset = 7f * d
+        val inset = 6f * d
         rect.set(inset, inset, w - inset, h - inset)
-        val cr = min(w, h) * 0.28f
-        val boost = if (down) 1.7f else 1f
+        val cr = min(w, h) * 0.42f
+        val boost = if (down) 2.2f else 1f
 
-        // fény-gyűrűk (glow)
+        // háttérvilágítás a gomb körül
         p.style = Paint.Style.STROKE
-        p.strokeWidth = 9f * d
-        p.color = withA(accent, (26 * boost).toInt())
-        canvas.drawRoundRect(rect, cr, cr, p)
-        p.strokeWidth = 5f * d
-        p.color = withA(accent, (60 * boost).toInt())
+        p.strokeWidth = 8f * d
+        p.color = withA(accent, (22 * boost).toInt())
         canvas.drawRoundRect(rect, cr, cr, p)
 
-        // gomb teste
+        // árnyék a ház felé
         p.style = Paint.Style.FILL
+        p.color = 0x66000000
+        rect.offset(0f, 2.5f * d)
+        canvas.drawRoundRect(rect, cr, cr, p)
+        rect.offset(0f, -2.5f * d)
+
+        // gumi gombtest
         p.shader = LinearGradient(
             0f, rect.top, 0f, rect.bottom,
-            if (down) withA(accent, 110) else 0xFF1C2431.toInt(), 0xFF090C11.toInt(), Shader.TileMode.CLAMP
+            if (down) withA(accent, 140) else 0xFF3C424B.toInt(),
+            if (down) 0xFF14171B.toInt() else 0xFF17191D.toInt(), Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(rect, cr, cr, p)
+
+        // fényes perem (felül világos, alul sötét)
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 1.4f * d
+        p.shader = LinearGradient(
+            0f, rect.top, 0f, rect.bottom,
+            0xAAFFFFFF.toInt(), 0x22FFFFFF, Shader.TileMode.CLAMP
         )
         canvas.drawRoundRect(rect, cr, cr, p)
         p.shader = null
 
-        // neon keret
-        p.style = Paint.Style.STROKE
-        p.strokeWidth = 2.2f * d
-        p.color = accent
-        canvas.drawRoundRect(rect, cr, cr, p)
+        // kis színes LED-csík alul
+        p.style = Paint.Style.FILL
+        p.color = withA(accent, if (down) 255 else 190)
+        val lw = rect.width() * 0.22f
+        canvas.drawRoundRect(
+            w / 2f - lw / 2f, rect.bottom - 5f * d, w / 2f + lw / 2f, rect.bottom - 3f * d,
+            2f * d, 2f * d, p
+        )
 
         // ikon + felirat
         val hasLabel = label.isNotEmpty()
-        drawIcon(canvas, w / 2f, if (hasLabel) h * 0.40f else h / 2f, min(w, h) * 0.2f)
+        val iy = if (hasLabel) h * 0.40f else h / 2f
+        val isz = min(w, h) * 0.2f
+        if (icon != KeyIcon.SWATCH) drawIcon(canvas, w / 2f, iy, isz, withA(accent, if (down) 150 else 90), 2.6f)
+        drawIcon(canvas, w / 2f, iy, isz, 0xFFF2F5FA.toInt(), 1f)
         if (hasLabel) {
             p.style = Paint.Style.FILL
             p.color = 0xFFD5DBE6.toInt()
@@ -327,15 +382,14 @@ class RemoteKey(
             var ts = min(w, h) * 0.15f
             p.textSize = ts
             while (p.measureText(label) > w * 0.8f && ts > 8f * d) { ts -= 1f; p.textSize = ts }
-            canvas.drawText(label, w / 2f, h * 0.84f, p)
+            canvas.drawText(label, w / 2f, h * 0.80f, p)
         }
         canvas.restore()
     }
 
-    private fun drawIcon(canvas: Canvas, cx: Float, cy: Float, s: Float) {
-        val ink = 0xFFF2F5FA.toInt()
+    private fun drawIcon(canvas: Canvas, cx: Float, cy: Float, s: Float, ink: Int, widthMul: Float) {
         p.style = Paint.Style.STROKE
-        p.strokeWidth = max(2.5f * d, s * 0.2f)
+        p.strokeWidth = max(2.5f * d, s * 0.2f) * widthMul
         p.color = ink
         when (icon) {
             KeyIcon.POWER -> {
@@ -410,7 +464,7 @@ class RemoteKey(
                 canvas.drawLine(cx - s * 0.22f, cy + s * 0.92f, cx + s * 0.22f, cy + s * 0.92f, p)
             }
             KeyIcon.SUN_UP, KeyIcon.SUN_DOWN -> {
-                if (icon == KeyIcon.SUN_DOWN) p.color = withA(ink, 170)
+                if (icon == KeyIcon.SUN_DOWN) p.color = withA(ink, (ink ushr 24) * 2 / 3)
                 canvas.drawCircle(cx, cy, s * 0.4f, p)
                 val inner = s * 0.68f
                 val outer = if (icon == KeyIcon.SUN_UP) s * 1.0f else s * 0.85f
@@ -428,9 +482,250 @@ class RemoteKey(
                 canvas.drawCircle(cx, cy, s * 0.85f, p)
                 p.style = Paint.Style.STROKE
                 p.strokeWidth = 2f * d
-                p.color = 0x88FFFFFF.toInt()
+                p.color = 0xCCE6EAF0.toInt()
                 canvas.drawCircle(cx, cy, s * 0.85f, p)
             }
         }
     }
+}
+
+/**
+ * A távirányító beépített kijelzője: kék háttérvilágítású LCD, pásztázó sorokkal.
+ * Felül: üzemmód + óra, középen nagy betűvel az utolsó parancs, alul a kamera által látott tárgy és az IR jelző.
+ */
+class LcdView(c: Context) : View(c) {
+    private val d = resources.displayMetrics.density
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rect = RectF()
+    private val ink = 0xFF9FF6FF.toInt()
+    private var tx = 0f
+
+    var mode = ""; set(v) { field = v; invalidate() }
+    var clock = ""; set(v) { field = v; invalidate() }
+    var main = ""; set(v) { field = v; invalidate() }
+    var caption = ""; set(v) { field = v; invalidate() }
+    var sub = ""; set(v) { field = v; invalidate() }
+
+    /** 0..1 – az IR jelző és a térerő-csíkok fényessége, küldéskor 1-re ugrik és elhalványul. */
+    private var signal = 0f
+    private val fade = ValueAnimator.ofFloat(1f, 0f).apply {
+        duration = 700
+        addUpdateListener { signal = it.animatedValue as Float; invalidate() }
+    }
+    private val marquee = ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = 4000
+        repeatCount = ValueAnimator.INFINITE
+        interpolator = LinearInterpolator()
+        addUpdateListener { tx = it.animatedFraction; if (scrolling) invalidate() }
+    }
+    private var scrolling = false
+
+    fun flash() { fade.cancel(); fade.start() }
+
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); marquee.start() }
+    override fun onDetachedFromWindow() { marquee.cancel(); fade.cancel(); super.onDetachedFromWindow() }
+
+    override fun onMeasure(ws: Int, hs: Int) {
+        val w = MeasureSpec.getSize(ws)
+        val h = if (MeasureSpec.getMode(hs) == MeasureSpec.EXACTLY) MeasureSpec.getSize(hs)
+        else (w * 0.36f).coerceIn(104f * d, 140f * d).toInt()
+        setMeasuredDimension(w, h)
+    }
+
+    private fun glowText(canvas: Canvas, t: String, x: Float, y: Float, size: Float, align: Paint.Align, color: Int = ink) {
+        p.textAlign = align
+        p.textSize = size
+        p.style = Paint.Style.FILL
+        p.color = (color and 0x00FFFFFF) or 0x55000000
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = size * 0.16f
+        canvas.drawText(t, x, y, p)
+        p.style = Paint.Style.FILL
+        p.color = color
+        canvas.drawText(t, x, y, p)
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+
+        // króm keret
+        rect.set(0f, 0f, w, h)
+        p.style = Paint.Style.FILL
+        p.shader = LinearGradient(
+            0f, 0f, 0f, h,
+            intArrayOf(0xFFF4F6F8.toInt(), 0xFF9AA1AA.toInt(), 0xFF5E646C.toInt(), 0xFFCED3D9.toInt()),
+            floatArrayOf(0f, 0.4f, 0.6f, 1f), Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(rect, 18f * d, 18f * d, p)
+
+        // fekete üveg
+        rect.inset(4f * d, 4f * d)
+        p.shader = null
+        p.color = 0xFF050708.toInt()
+        canvas.drawRoundRect(rect, 14f * d, 14f * d, p)
+
+        // háttérvilágított képernyő
+        rect.inset(6f * d, 6f * d)
+        val cr = 8f * d
+        p.shader = RadialGradient(
+            rect.centerX(), rect.centerY(), rect.width() * 0.7f,
+            0xFF0E4D63.toInt(), 0xFF041A24.toInt(), Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(rect, cr, cr, p)
+        p.shader = null
+
+        canvas.save()
+        canvas.clipRect(rect)
+
+        // LCD rács / pásztázó sorok
+        p.color = 0x26000000
+        p.strokeWidth = 1f
+        var y = rect.top
+        while (y < rect.bottom) { canvas.drawLine(rect.left, y, rect.right, y, p); y += 3f * d }
+
+        p.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        val pad = 10f * d
+        val small = (rect.height() * 0.14f).coerceAtMost(13f * d)
+
+        // felső sor: üzemmód + óra
+        glowText(canvas, mode, rect.left + pad, rect.top + pad + small * 0.8f, small, Paint.Align.LEFT)
+        glowText(canvas, clock, rect.right - pad, rect.top + pad + small * 0.8f, small, Paint.Align.RIGHT)
+
+        // vékony elválasztó
+        p.color = 0x449FF6FF
+        p.strokeWidth = 1f * d
+        val sepTop = rect.top + pad + small * 1.35f
+        canvas.drawLine(rect.left + pad, sepTop, rect.right - pad, sepTop, p)
+
+        // fő sor: nagy betűs parancs (ha túl hosszú, futófény)
+        var big = rect.height() * 0.30f
+        p.textSize = big
+        val maxW = rect.width() - pad * 2
+        while (p.measureText(main) > maxW && big > rect.height() * 0.2f) { big -= 1f; p.textSize = big }
+        val mw = p.measureText(main)
+        val mainY = rect.centerY() + big * 0.30f
+        scrolling = mw > maxW
+        if (scrolling) {
+            val span = mw + maxW * 0.4f
+            val x = rect.left + pad - tx * span
+            glowText(canvas, main, x, mainY, big, Paint.Align.LEFT)
+            glowText(canvas, main, x + span, mainY, big, Paint.Align.LEFT)
+        } else glowText(canvas, main, rect.centerX(), mainY, big, Paint.Align.CENTER)
+
+        // felirat a fő sor alatt
+        if (caption.isNotEmpty()) {
+            glowText(canvas, caption, rect.centerX(), mainY + small * 1.2f, small * 0.85f, Paint.Align.CENTER, 0xFF6FD3E6.toInt())
+        }
+
+        // alsó sor: kamera + IR jelző és térerő-csíkok
+        val by = rect.bottom - pad * 0.8f
+        glowText(canvas, sub, rect.left + pad, by, small, Paint.Align.LEFT)
+        val barsW = 22f * d
+        val bx = rect.right - pad - barsW
+        for (i in 0 until 4) {
+            val bh = small * (0.35f + i * 0.22f)
+            val lit = signal > i * 0.2f
+            p.style = Paint.Style.FILL
+            p.color = if (lit) ink else 0x339FF6FF
+            canvas.drawRect(bx + i * 6f * d, by - bh, bx + i * 6f * d + 4f * d, by, p)
+        }
+        glowText(
+            canvas, "IR", bx - 6f * d, by, small, Paint.Align.RIGHT,
+            if (signal > 0.05f) 0xFFFF5A5A.toInt() else 0x559FF6FF
+        )
+        canvas.restore()
+
+        // üveg csillanás
+        p.shader = LinearGradient(
+            0f, rect.top, 0f, rect.top + rect.height() * 0.5f,
+            0x22FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(rect, cr, cr, p)
+        p.shader = null
+    }
+}
+
+/**
+ * A távirányító háza: csiszolt ezüst keret, benne sötét grafit előlap, a tetején infravörös ablakkal
+ * és kék háttérvilágítású szegéllyel.
+ */
+class RemoteShellDrawable(private val density: Float) : Drawable() {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val r = RectF()
+    private val lines = Random(7).let { rnd -> FloatArray(160) { rnd.nextFloat() } }
+    private val glow = 0xFF4DD2FF.toInt()
+
+    override fun draw(canvas: Canvas) {
+        val b = bounds
+        val dd = density
+        val outerR = 44f * dd
+        r.set(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.bottom.toFloat())
+
+        // csiszolt ezüst test
+        p.style = Paint.Style.FILL
+        p.shader = LinearGradient(
+            r.left, 0f, r.right, 0f,
+            intArrayOf(
+                0xFF7D848D.toInt(), 0xFFD3D8DE.toInt(), 0xFFF5F7F9.toInt(),
+                0xFFC2C8CF.toInt(), 0xFFE4E8EC.toInt(), 0xFF757C85.toInt()
+            ),
+            floatArrayOf(0f, 0.12f, 0.35f, 0.6f, 0.85f, 1f), Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(r, outerR, outerR, p)
+        p.shader = null
+
+        // csiszolás-csíkok
+        canvas.save()
+        canvas.clipRect(r)
+        p.strokeWidth = 1f
+        for (i in lines.indices step 2) {
+            val x = r.left + lines[i] * r.width()
+            p.color = if (lines[i + 1] > 0.5f) 0x18FFFFFF else 0x14000000
+            canvas.drawLine(x, r.top, x, r.bottom, p)
+        }
+        canvas.restore()
+
+        // perem: felül világos, alul sötét
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 2f * dd
+        p.shader = LinearGradient(0f, r.top, 0f, r.bottom, 0xCCFFFFFF.toInt(), 0x88000000.toInt(), Shader.TileMode.CLAMP)
+        r.inset(dd, dd)
+        canvas.drawRoundRect(r, outerR, outerR, p)
+        p.shader = null
+
+        // IR ablak a tetején
+        val irW = 54f * dd
+        val irH = 9f * dd
+        val cx = r.centerX()
+        val irTop = r.top + 5f * dd
+        p.style = Paint.Style.FILL
+        p.shader = LinearGradient(0f, irTop, 0f, irTop + irH, 0xFF5A0C10.toInt(), 0xFF1A0204.toInt(), Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(cx - irW / 2, irTop, cx + irW / 2, irTop + irH, irH / 2, irH / 2, p)
+        p.shader = null
+        p.color = 0x55FFFFFF
+        canvas.drawRoundRect(cx - irW / 2 + 6 * dd, irTop + 1.5f * dd, cx + irW / 2 - 6 * dd, irTop + 3f * dd, dd, dd, p)
+
+        // grafit előlap
+        val bezel = 9f * dd
+        r.set(b.left + bezel, b.top + bezel + 10f * dd, b.right - bezel, b.bottom - bezel)
+        val innerR = outerR - bezel
+        p.shader = LinearGradient(0f, r.top, 0f, r.bottom, 0xFF262A31.toInt(), 0xFF101215.toInt(), Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(r, innerR, innerR, p)
+        p.shader = null
+
+        // kék háttérvilágítású szegély
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 5f * dd
+        p.color = (glow and 0x00FFFFFF) or 0x2A000000
+        canvas.drawRoundRect(r, innerR, innerR, p)
+        p.strokeWidth = 1.5f * dd
+        p.color = (glow and 0x00FFFFFF) or 0xAA000000.toInt()
+        canvas.drawRoundRect(r, innerR, innerR, p)
+    }
+
+    override fun setAlpha(alpha: Int) { p.alpha = alpha }
+    override fun setColorFilter(cf: ColorFilter?) { p.colorFilter = cf }
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity() = PixelFormat.TRANSLUCENT
 }
