@@ -41,7 +41,6 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -97,7 +96,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var topBar: LinearLayout
     private lateinit var chips: TextView
     private lateinit var flux: FluxView
-    private lateinit var panelScroll: ScrollView
+    private lateinit var panel: LinearLayout
     private lateinit var destTv: TextView
     private lateinit var presentTv: TextView
     private lateinit var lastTv: TextView
@@ -231,23 +230,12 @@ class MainActivity : AppCompatActivity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_SHORT).show()
 
-    /** Matt, opak panel – nincs áttetszőség. */
-    private fun glassBg(radiusDp: Int = 24): GradientDrawable = GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(0xFF10151F.toInt(), 0xFF07090E.toInt())
-    ).apply {
-        cornerRadius = dp(radiusDp).toFloat()
-        setStroke(dp(1), 0x33FFFFFF)
-    }
+    /** Fekete, szálcsiszolt panel – opak, lekerekített. */
+    private fun glassBg(radiusDp: Int = 24): Drawable =
+        metalPanel(resources.displayMetrics.density, radiusDp.toFloat())
 
-    private fun neon(color: Int, strong: Boolean = false): Drawable {
-        val g = GradientDrawable().apply {
-            cornerRadius = dp(14).toFloat()
-            setColor((color and 0x00FFFFFF) or (if (strong) 0x55000000 else 0x1A000000))
-            setStroke(dp(2), color)
-        }
-        return RippleDrawable(ColorStateList.valueOf(0x44FFFFFF), g, null)
-    }
+    private fun neon(color: Int, strong: Boolean = false): Drawable =
+        RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), metalKey(resources.displayMetrics.density, color, strong), null)
 
     private fun neonBtn(t: String, color: Int, strong: Boolean = false, onClick: (View) -> Unit) =
         Button(this).apply {
@@ -344,7 +332,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildUi() {
-        root = FrameLayout(this).apply { setBackgroundColor(0xFF05070B.toInt()) }
+        root = FrameLayout(this).apply { setBackgroundColor(0xFF000000.toInt()) }
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
         // ---- fejléc ----
@@ -426,13 +414,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         hintTv = TextView(this).apply {
-            textSize = 12f
+            textSize = 11f
             setTextColor(Color.WHITE)
-            setPadding(dp(10), dp(8), dp(10), dp(8))
+            setPadding(dp(10), dp(6), dp(10), dp(6))
             background = GradientDrawable().apply {
                 cornerRadius = dp(12).toFloat()
-                setColor(0xFF1A1408.toInt())
-                setStroke(dp(1), 0x88FFB000.toInt())
+                setColor(0xFF0A0A0B.toInt())
+                setStroke(dp(1), 0x66FFB000.toInt())
             }
         }
 
@@ -461,15 +449,16 @@ class MainActivity : AppCompatActivity() {
             addView(circuits, LinearLayout.LayoutParams(-1, -2))
             addView(updateBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         }
-        panelScroll = ScrollView(this).apply {
-            background = glassBg(26)
-            isVerticalScrollBarEnabled = false
-            isFillViewport = true
-            addView(inner)
+        // Nincs görgetés: a gombok a panel teljes magasságát súlyozva kitöltik.
+        panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = glassBg(28)
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            addView(inner, LinearLayout.LayoutParams(-1, -1))
         }
 
         content.addView(topBar, LinearLayout.LayoutParams(-1, -2))
-        content.addView(panelScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        content.addView(panel, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
 
@@ -507,11 +496,11 @@ class MainActivity : AppCompatActivity() {
             val panelW = min(dp(400), (wPx * 0.40f).toInt())
             topBar.layoutParams = LinearLayout.LayoutParams(0, -1, 1f)
             topBar.gravity = Gravity.CENTER_VERTICAL
-            panelScroll.layoutParams = LinearLayout.LayoutParams(panelW, -1).apply { leftMargin = dp(8) }
+            panel.layoutParams = LinearLayout.LayoutParams(panelW, -1).apply { leftMargin = dp(8) }
         } else {
             topBar.layoutParams = LinearLayout.LayoutParams(-1, -2)
             topBar.gravity = Gravity.TOP
-            panelScroll.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+            panel.layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
         }
     }
 
@@ -533,7 +522,7 @@ class MainActivity : AppCompatActivity() {
         torchBtn.text = if (torchOn) "💡 LED lámpa: BE" else "💡 LED lámpa: KI"
         torchBtn.background = neon(if (torchOn) cAmber else cBlue)
         refreshRadar()
-        panelScroll.alpha = if (tvSeen) 1f else 0.92f
+        panel.alpha = if (tvSeen) 1f else 0.92f
         flux.active = scanning || tvSeen
     }
 
@@ -691,7 +680,7 @@ class MainActivity : AppCompatActivity() {
             append("Eszköz: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n")
             append("Kijelző: ${cfg.screenWidthDp}x${cfg.screenHeightDp}dp, sw${cfg.smallestScreenWidthDp}dp, ${dm.density}x, ${dm.widthPixels}x${dm.heightPixels}px\n")
             append("Inset (b,f,j,a): ${insets.joinToString()}\n")
-            append("Elrendezés: ${if (this@MainActivity.content.orientation == LinearLayout.HORIZONTAL) "oldalsó" else "álló"}, panel ${panelScroll.height}px, radar ${radarBox.width}x${radarBox.height}px\n")
+            append("Elrendezés: ${if (this@MainActivity.content.orientation == LinearLayout.HORIZONTAL) "oldalsó" else "álló"}, panel ${panel.height}px, radar ${radarBox.width}x${radarBox.height}px\n")
             append("IR adó: ${runCatching { ir?.hasIrEmitter() }.getOrNull()}  ($freqs)\n")
             append("Kamera engedély: ${ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED}\n")
             append("Kamera aktív: ${camera != null}, utolsó kamerahiba: ${lastCamErr ?: "nincs"}\n")
