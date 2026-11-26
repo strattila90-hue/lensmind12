@@ -4,9 +4,13 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -33,6 +37,7 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(true);
         web.setWebViewClient(new WebViewClient());
+        web.addJavascriptInterface(new Bridge(), "OndaNative");
         setContentView(web);
         web.loadUrl("file:///android_asset/index.html");
     }
@@ -124,5 +129,33 @@ public class MainActivity extends Activity {
                 });
             }
         }).start();
+    }
+    /** A weboldal innen kéri a rezgést: gombnyomásra tompa puffanás, tekeréskor apró kattanás. */
+    private final class Bridge {
+        @JavascriptInterface
+        public void haptic(String kind) {
+            Vibrator v = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+            if (v == null || !v.hasVibrator()) return;
+            VibrationEffect e;
+            switch (kind) {
+                case "down":
+                case "stop":
+                    e = VibrationEffect.createOneShot(kind.equals("stop") ? 38 : 30, 255); // tompa puffanás
+                    break;
+                case "power":
+                    e = VibrationEffect.createWaveform(new long[]{0, 30, 50, 22}, new int[]{0, 255, 0, 160}, -1);
+                    break;
+                case "detent":
+                    e = Build.VERSION.SDK_INT >= 29
+                            ? VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
+                            : VibrationEffect.createOneShot(10, 170);
+                    break;
+                default: // tick, up
+                    e = Build.VERSION.SDK_INT >= 29
+                            ? VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK)
+                            : VibrationEffect.createOneShot(5, 90);
+            }
+            v.vibrate(e);
+        }
     }
 }

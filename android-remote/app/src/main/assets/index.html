@@ -1,5 +1,13 @@
 <title>Onda Haptic</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  EMLÉKEZTETŐ: milyennek kell kinéznie és működnie (ezt minden módosításnál tartsd meg)
+  - Térhatás: a távirányítónak mélysége és magassága van (vastag, lekerekített ház, kiemelkedő gombok), dől a kurzor / a telefon dőlésszöge felé.
+  - Fény: a perem RGB színekben körbefut. LED módban a választott színnel világít.
+  - Rezgés: a telefon rezeg. Gombnyomásra tompa puffanás, a kerék tekerésekor apró kattanások.
+  - Hang: gombnál mély, tompa puffanás, tekerésnél halk, rövid kattanások.
+-->
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
@@ -37,7 +45,7 @@ button{font:inherit;color:inherit}
   border-radius:68px/62px;padding:36px 40px 40px;
   display:flex;flex-direction:column;align-items:center;justify-content:space-between;
   background:linear-gradient(162deg,var(--graph-1) 0%,var(--graph-2) 46%,var(--graph-3) 100%);
-  box-shadow:0 0 0 1.5px #08090b,
+  box-shadow:0 0 0 1.5px #08090b,0 1px 0 1px #1b1d21,0 2px 0 1px #181a1e,0 3px 0 1px #16181b,0 4px 0 1px #141619,0 5px 0 1px #121417,0 6px 0 1px #101214,0 7px 0 1px #0e0f11,0 8px 0 1px #0b0c0e,
     inset 0 2px 3px rgba(255,255,255,.16), inset 0 -6px 12px rgba(0,0,0,.65), inset 3px 0 6px rgba(255,255,255,.04), inset -3px 0 6px rgba(0,0,0,.35),
     0 40px 60px -14px rgba(0,0,0,.55), 0 14px 26px rgba(0,0,0,.35);
   transform:perspective(calc(1700px*var(--k))) rotateX(var(--tx)) rotateY(var(--ty)) scale(var(--k));
@@ -87,7 +95,7 @@ button{font:inherit;color:inherit}
 /* gombok */
 .row{width:100%;display:flex;justify-content:space-between;align-items:center}
 .btn{
-  --lift:4.5px;position:relative;display:grid;place-items:center;flex:none;width:58px;height:58px;border-radius:50%;border:0;padding:0;cursor:pointer;
+  --lift:6.5px;position:relative;display:grid;place-items:center;flex:none;width:58px;height:58px;border-radius:50%;border:0;padding:0;cursor:pointer;
   color:#7b8088;background:linear-gradient(180deg,#464a52,#2c2f36 56%,#25272d);
   box-shadow:0 var(--lift) 0 #0b0c0e,0 calc(var(--lift) + 5px) 9px rgba(0,0,0,.55),inset 0 1.2px 1px rgba(255,255,255,.24),inset 0 -2px 3px rgba(0,0,0,.35);
   transition:translate .26s cubic-bezier(.2,2,.4,1),box-shadow .12s,color .3s;
@@ -95,7 +103,7 @@ button{font:inherit;color:inherit}
 .btn svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;transition:filter .3s}
 .btn.pill{width:86px;height:50px;border-radius:25px}
 .btn.wide{width:100px;height:56px;border-radius:28px}
-.btn.pressed{transition-duration:.03s,.03s,.3s;translate:0 3.4px;
+.btn.pressed{transition-duration:.03s,.03s,.3s;translate:0 5.2px;
   box-shadow:0 1.1px 0 #0b0c0e,0 3px 5px rgba(0,0,0,.5),inset 0 1.5px 4px rgba(0,0,0,.45),inset 0 -1px 2px rgba(255,255,255,.07);
   background:linear-gradient(180deg,#2e3137,#3a3d44)}
 .btn[aria-pressed="true"]::after{content:"";position:absolute;top:7px;width:5px;height:5px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber)}
@@ -221,6 +229,18 @@ button{font:inherit;color:inherit}
 .hints div{font-size:1.55cqw;line-height:1.35;border-top:1.5px solid color-mix(in srgb,var(--hint) 40%,transparent);padding-top:1cqw}
 .hints b{display:block;font-size:1.25cqw;letter-spacing:.22em;text-transform:uppercase;color:var(--hint-hi);margin-bottom:.4cqw;font-weight:600}
 
+/* RGB élfény a ház peremén */
+@property --ra{syntax:'<angle>';inherits:false;initial-value:0deg}
+.rgbrim{position:absolute;inset:0;border-radius:inherit;padding:2.5px;pointer-events:none;opacity:.95;transition:opacity .4s;
+  background:conic-gradient(from var(--ra),#ff2d55,#ff9500,#ffe600,#34c759,#00d4ff,#5856ff,#d946ef,#ff2d55);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);
+  animation:ra 7s linear infinite}
+.rgbrim.glow{filter:blur(10px);opacity:.6;padding:4px}
+@keyframes ra{to{--ra:360deg}}
+.remote:not(.awake) .rgbrim{opacity:.55}
+.remote:not(.awake) .rgbrim.glow{opacity:.3}
+.remote.ledmode .rgbrim{background:conic-gradient(from var(--ra),var(--lc),hsl(calc(var(--lh) + 40) 90% 60%),var(--lc),hsl(calc(var(--lh) - 40) 90% 60%),var(--lc))}
 /* LED fényvezérlő mód */
 .stage{position:relative;z-index:1}
 .room{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:var(--lo);transition:opacity .4s;
@@ -268,7 +288,7 @@ button{font:inherit;color:inherit}
 <main class="stage" id="stage">
   <div class="fit" id="fit">
     <section class="remote" id="remote" aria-label="Haptikus távirányító">
-      <i class="sheen"></i>
+      <i class="sheen"></i><i class="rgbrim glow"></i><i class="rgbrim"></i>
 
       <div class="ir"><span class="irwin"></span><span class="brand">Onda</span><i class="led" id="led"></i></div>
 
@@ -402,9 +422,9 @@ function audio(){
   return ac;
 }
 var P={
-  tick:{f:3800,q:2.4,d:.011,g:.5,tf:0},
-  detent:{f:2700,q:1.7,d:.02,g:.8,tf:125,tg:.22},
-  down:{f:1750,q:1.1,d:.034,g:1,tf:105,tg:.45},
+  tick:{f:3800,q:2.4,d:.009,g:.38,tf:0},
+  detent:{f:2900,q:1.9,d:.014,g:.6,tf:0},
+  down:{f:850,q:.8,d:.05,g:1,tf:64,tg:.95},
   up:{f:3400,q:1.9,d:.015,g:.55,tf:0},
   stop:{f:650,q:.9,d:.06,g:1.2,tf:62,tg:.65},
   power:{f:1250,q:.9,d:.05,g:1.1,tf:78,tg:.6}
@@ -432,7 +452,11 @@ function chirp(up){
   });
 }
 var VIB={tick:3,detent:6,down:12,up:4,stop:22,power:[14,30,18]};
-function buzz(kind){if(S.haptic&&navigator.vibrate){try{navigator.vibrate(VIB[kind])}catch(e){}}}
+function buzz(kind){
+  if(!S.haptic)return;
+  try{if(window.OndaNative&&window.OndaNative.haptic){window.OndaNative.haptic(kind);return}}catch(e){}
+  if(navigator.vibrate){try{navigator.vibrate(VIB[kind])}catch(e){}}
+}
 
 /* ---------- visszajelzés ---------- */
 var awakeT,lastSnd=0,lastStop=0;
@@ -729,6 +753,16 @@ if(!reduce&&matchMedia('(pointer:fine)').matches){
     var nx=clamp((e.clientX-(r.left+r.width/2))/(innerWidth/2),-1,1),ny=clamp((e.clientY-(r.top+r.height/2))/(innerHeight/2),-1,1);
     remote.style.setProperty('--ty',(nx*4.5).toFixed(2)+'deg');remote.style.setProperty('--tx',(-ny*3).toFixed(2)+'deg');
     remote.style.setProperty('--lx',(50+nx*38).toFixed(1)+'%');remote.style.setProperty('--ly',(22+ny*24).toFixed(1)+'%');
+  });
+}
+
+/* telefonon a dőlésszög adja a térhatást */
+if(!reduce&&window.DeviceOrientationEvent&&matchMedia('(pointer:coarse)').matches){
+  addEventListener('deviceorientation',function(e){
+    if(e.gamma==null||remote.classList.contains('flat'))return;
+    var g=clamp(e.gamma,-25,25),b=clamp((e.beta||0)-50,-25,25);
+    remote.style.setProperty('--ty',(g*.35).toFixed(2)+'deg');remote.style.setProperty('--tx',(-b*.25).toFixed(2)+'deg');
+    remote.style.setProperty('--lx',(50+g*1.6).toFixed(1)+'%');remote.style.setProperty('--ly',(22+b).toFixed(1)+'%');
   });
 }
 
