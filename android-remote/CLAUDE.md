@@ -12,4 +12,4 @@ Ezt tartsd meg minden módosításnál. A forrás az `app/src/main/assets/index.
 - **Tekerés:** apró kattanások, halk, rövid hang és finom rezgés minden fokozatnál.
 
 ## Frissítés
-Új `onda-N` kiadásnál az app kötelező frissítést kér. Az aláírókulcs (`app/lensmind.keystore`) nyilvános, hobbi célra való.
+Önálló frissítés: az app indításkor, utána 15 percenként, a háttérben pedig 3 óránként megnézi az új `onda-N` kiadást, letölti és telepíti. Android 12+ rendszeren az első kézi telepítés után megerősítés nélkül is lefuthat. Az aláírókulcs (`app/lensmind.keystore`) nyilvános, hobbi célra való.

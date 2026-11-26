@@ -1,6 +1,9 @@
 package hu.onda;
 
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.pm.PackageInstaller;
+import android.os.Build;
 import android.content.Intent;
 import android.net.Uri;
 import android.provider.Settings;
@@ -13,7 +16,9 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileInputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -111,5 +116,36 @@ final class Updater {
         ctx.startActivity(new Intent(Intent.ACTION_VIEW)
                 .setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK));
+    }
+    /**
+     * Önálló telepítés PackageInstaller munkamenettel. Android 12+ rendszeren, ha az app már
+     * ezzel telepítette magát egyszer, a frissítés megerősítés nélkül, csendben lefut.
+     * Egyébként a rendszer egy megerősítést kér, azt az InstallReceiver megnyitja.
+     */
+    static void installSession(Context ctx, File apk) throws Exception {
+        PackageInstaller pi = ctx.getPackageManager().getPackageInstaller();
+        PackageInstaller.SessionParams sp = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+        if (Build.VERSION.SDK_INT >= 31) sp.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
+        int id = pi.createSession(sp);
+        try (PackageInstaller.Session s = pi.openSession(id)) {
+            try (OutputStream out = s.openWrite("onda.apk", 0, apk.length()); InputStream in = new FileInputStream(apk)) {
+                byte[] buf = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                s.fsync(out);
+            }
+            Intent done = new Intent(ctx, InstallReceiver.class).setAction("hu.onda.INSTALL_DONE").setPackage(ctx.getPackageName());
+            PendingIntent pend = PendingIntent.getBroadcast(ctx, id, done, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            s.commit(pend.getIntentSender());
+        }
+    }
+
+    /** Teljes önálló kör: ellenőrzés, letöltés, telepítés. Háttérszálról hívd. true = indult telepítés. */
+    static boolean updateNow(Context ctx) throws Exception {
+        Info info = fetchLatest();
+        if (info == null || info.build <= BuildConfig.BUILD_NUMBER || !canInstall(ctx)) return false;
+        File f = downloadApk(ctx, info, pct -> { });
+        installSession(ctx, f);
+        return true;
     }
 }

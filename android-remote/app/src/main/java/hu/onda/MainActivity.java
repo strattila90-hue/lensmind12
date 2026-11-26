@@ -2,7 +2,6 @@ package hu.onda;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.DialogInterface;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
@@ -22,9 +21,10 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private Updater.Info pending;
-    private AlertDialog dialog;
     private boolean busy;
+    private boolean askedPermission;
+    private String triedTag;
+    private long triedAt;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -40,21 +40,34 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new Bridge(), "OndaNative");
         setContentView(web);
         web.loadUrl("file:///android_asset/index.html");
+        scheduleBackgroundUpdates();
     }
+
+    /** Háromóránként akkor is frissít, ha az appot nem nyitod meg. */
+    private void scheduleBackgroundUpdates() {
+        android.app.job.JobScheduler js = (android.app.job.JobScheduler) getSystemService(JOB_SCHEDULER_SERVICE);
+        if (js == null) return;
+        js.schedule(new android.app.job.JobInfo.Builder(7, new android.content.ComponentName(this, UpdateJob.class))
+                .setPeriodic(3 * 60 * 60 * 1000L)
+                .setRequiredNetworkType(android.app.job.JobInfo.NETWORK_TYPE_ANY)
+                .build());
+    }
+
+
+    private final Runnable periodic = new Runnable() {
+        @Override public void run() { checkForUpdate(); ui.postDelayed(this, 15 * 60 * 1000L); }
+    };
 
     @Override
     protected void onResume() {
         super.onResume();
         web.onResume();
-        if (pending != null) {
-            showForced(pending); // pl. az "ismeretlen források" engedélyezése után
-        } else {
-            checkForUpdate();
-        }
+        ui.post(periodic);
     }
 
     @Override
     protected void onPause() {
+        ui.removeCallbacks(periodic);
         web.onPause();
         super.onPause();
     }
@@ -64,72 +77,48 @@ public class MainActivity extends Activity {
         finish();
     }
 
-    /** Kötelező frissítés: új Release esetén addig nem lehet használni az appot, amíg fel nem telepíted. */
+    /** Teljesen önálló frissítés: nincs gomb és nincs kérdés, az app maga tölti le és telepíti az új kiadást. */
     private void checkForUpdate() {
         if (busy) return;
         busy = true;
         new Thread(() -> {
-            Updater.Info info = null;
+            String msg = null;
+            boolean needPermission = false;
             try {
-                info = Updater.fetchLatest();
+                Updater.Info info = Updater.fetchLatest();
+                if (info != null && info.build > BuildConfig.BUILD_NUMBER) {
+                    if (!Updater.canInstall(this)) {
+                        needPermission = true;
+                    } else if (!info.tag.equals(triedTag) || System.currentTimeMillis() - triedAt > 30 * 60 * 1000L) {
+                        triedTag = info.tag;
+                        triedAt = System.currentTimeMillis();
+                        ui.post(() -> Toast.makeText(this, "Új verzió (" + info.tag + "): frissítés letöltése…", Toast.LENGTH_LONG).show());
+                        java.io.File f = Updater.downloadApk(this, info, pct -> { });
+                        Updater.installSession(this, f);
+                        msg = "Telepítés indul…";
+                    }
+                }
             } catch (Exception ignored) {
-                // nincs net: az app működik tovább
+                // nincs net: az app működik tovább, a következő kör újra próbálja
             }
-            final Updater.Info found = info;
+            final String m = msg;
+            final boolean perm = needPermission;
             ui.post(() -> {
                 busy = false;
-                if (found != null && found.build > BuildConfig.BUILD_NUMBER) {
-                    pending = found;
-                    showForced(found);
+                if (m != null) Toast.makeText(this, m, Toast.LENGTH_SHORT).show();
+                if (perm && !askedPermission) {
+                    askedPermission = true;
+                    new AlertDialog.Builder(this)
+                            .setTitle("Önálló frissítés")
+                            .setMessage("Az automatikus frissítéshez engedélyezd az Onda Haptic számára az alkalmazások telepítését. Egyszer kell.")
+                            .setPositiveButton("Engedélyezés", (d, w) -> Updater.openInstallPermission(this))
+                            .setNegativeButton("Később", null)
+                            .show();
                 }
             });
         }).start();
     }
 
-    private void showForced(Updater.Info info) {
-        if (dialog != null && dialog.isShowing()) return;
-        if (!Updater.canInstall(this)) {
-            dialog = new AlertDialog.Builder(this)
-                    .setTitle("Új verzió: " + info.tag)
-                    .setMessage("A frissítéshez engedélyezd az Onda Haptic számára az alkalmazások telepítését, majd lépj vissza.")
-                    .setCancelable(false)
-                    .setPositiveButton("Engedélyezés", (d, w) -> Updater.openInstallPermission(this))
-                    .show();
-            return;
-        }
-        dialog = new AlertDialog.Builder(this)
-                .setTitle("Kötelező frissítés")
-                .setMessage("Elérhető az új verzió: " + info.tag + ". A folytatáshoz telepítsd.")
-                .setCancelable(false)
-                .setPositiveButton("Telepítés", null)
-                .create();
-        dialog.show();
-        dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> download(info));
-    }
-
-    private void download(Updater.Info info) {
-        final AlertDialog d = dialog;
-        d.getButton(DialogInterface.BUTTON_POSITIVE).setEnabled(false);
-        d.setMessage("Letöltés: 0%");
-        new Thread(() -> {
-            try {
-                File f = Updater.downloadApk(this, info, pct -> ui.post(() -> d.setMessage("Letöltés: " + pct + "%")));
-                ui.post(() -> {
-                    d.setMessage("Letöltve. A telepítő megnyílik.");
-                    Updater.install(this, f);
-                    d.getButton(DialogInterface.BUTTON_POSITIVE).setEnabled(true);
-                    d.getButton(DialogInterface.BUTTON_POSITIVE).setText("Újra telepítés");
-                });
-            } catch (Exception e) {
-                ui.post(() -> {
-                    Toast.makeText(this, "Hiba a letöltésnél: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    d.setMessage("A letöltés nem sikerült. Próbáld újra.");
-                    d.getButton(DialogInterface.BUTTON_POSITIVE).setEnabled(true);
-                    d.getButton(DialogInterface.BUTTON_POSITIVE).setText("Újra");
-                });
-            }
-        }).start();
-    }
     /** A weboldal innen kéri a rezgést: gombnyomásra tompa puffanás, tekeréskor apró kattanás. */
     private final class Bridge {
         @JavascriptInterface
