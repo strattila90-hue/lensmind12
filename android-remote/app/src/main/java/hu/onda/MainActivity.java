@@ -360,6 +360,9 @@ public class MainActivity extends ComponentActivity {
         public void tvConnect(String ip) { lg.connect(ip); }
 
         @JavascriptInterface
+        public void tvPing(String ip) { lg.ping(ip); }
+
+        @JavascriptInterface
         public void tvText(String ip, String text) { lg.text(ip, text); }
 
         @JavascriptInterface

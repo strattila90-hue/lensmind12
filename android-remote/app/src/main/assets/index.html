@@ -261,6 +261,8 @@ button{font:inherit;color:inherit}
 .kbtv button.on{color:var(--amber);background:#2f3239;box-shadow:inset 0 2px 5px rgba(0,0,0,.5)}
 .kbtv button i{font-style:normal;display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:7px;background:#555}
 .kbtv button.ready i{background:#34c759;box-shadow:0 0 6px #34c759}
+.kbtv button.online i{background:#4aa3ff;box-shadow:0 0 6px #4aa3ff}
+.kbtv button.offline i{background:#b23a30}
 .kbtv button.pairing i{background:var(--amber)}
 .kb small{font-size:11px;line-height:1.35;color:#7b8088}
 /* LED fényvezérlő mód */
@@ -332,7 +334,7 @@ button{font:inherit;color:inherit}
       <div class="ir"><span class="irwin"></span><span class="brand">Onda</span><i class="led" id="led"></i></div>
 
       <div class="oled" id="oled" aria-live="polite">
-        <div class="o-top"><span id="oSrc">STREAMING</span><span class="o-flags"><b id="oTv">TV</b><b id="oLs">LED</b><b id="oMute">NÉMA</b><b id="oHap">HAPT</b></span></div>
+        <div class="o-top"><span id="oSrc">HÁLÓSZOBA</span><span class="o-flags"><b id="oTv">TV</b><b id="oLs">LED</b><b id="oMute">NÉMA</b><b id="oHap">HAPT</b></span></div>
         <div class="o-mid"><span class="o-vol" id="oVol">032</span>
           <div class="o-info"><span class="o-label" id="oLabel">HANGERŐ</span><span class="o-msg" id="oMsg">Görgess: hangerő</span></div></div>
         <div class="o-bar" id="oBar"></div>
@@ -460,7 +462,7 @@ function ledColor(force){
 }
 var T={scan:false,seen:false,led:false,announced:false,announcedLed:false};
 /* beírás: Wi-Fin át betű is (LG webOS), Wi-Fi nélkül csak számjegy megy IR-en */
-var TVS=[{n:'TV 1',ip:'192.168.1.109'},{n:'TV 2',ip:'192.168.1.7'}],tvi=0,linkState={};
+var TVS=[{n:'Hálószoba TV',s:'HÁLÓSZOBA',ip:'192.168.1.109'},{n:'Gyerekszoba TV',s:'GYEREKSZOBA',ip:'192.168.1.7'}],tvi=0,linkState={};
 try{tvi=clamp(parseInt(localStorage.getItem('onda-tvi'),10)||0,0,TVS.length-1)}catch(e){}
 function curTv(){return TVS[tvi]}
 function linkOf(ip){return (linkState[ip]||{}).state||''}
@@ -469,11 +471,11 @@ function paintLink(){
   box.innerHTML='';
   TVS.forEach(function(t,i){
     var b=document.createElement('button');b.type='button';b.className=(i===tvi?'on ':'')+linkOf(t.ip);
-    b.innerHTML='<i></i>'+t.n+' · .'+t.ip.split('.').pop();
-    b.addEventListener('click',function(){tvi=i;try{localStorage.setItem('onda-tvi',String(i))}catch(e){}fx('down');connectTv();paintLink()});
+    b.innerHTML='<i></i>'+t.s;
+    b.addEventListener('click',function(){selectTv(i);fx('down');connectTv()});
     box.appendChild(b);
   });
-  var m={ready:'Kapcsolódva ('+c.n+'). Amit írsz, megjelenik a TV szövegmezőjében.',pairing:'Fogadd el a párosítást a TV képernyőjén.',connecting:'Kapcsolódás a '+c.n+'-hez…'}[st.state];
+  var m={online:c.n+' elérhető. Koppints a nevére a csatlakozáshoz.',offline:c.n+' nem érhető el (kikapcsolva vagy más Wi-Fi-n van).',ready:'Kapcsolódva ('+c.n+'). Amit írsz, megjelenik a TV szövegmezőjében.',pairing:'Fogadd el a párosítást a TV képernyőjén.',connecting:'Kapcsolódás a '+c.n+'-hez…'}[st.state];
   stat.textContent=m||st.msg||'Wi-Fi kapcsolat nélkül csak számok mennek IR-en.';
 }
 function connectTv(){
@@ -481,7 +483,27 @@ function connectTv(){
   if(!n||!n.tvConnect){linkState[ip]={state:'',msg:'A Wi-Fi beírás csak a telepített appban működik.'};paintLink();return}
   linkState[ip]={state:'connecting'};paintLink();n.tvConnect(ip);
 }
-window.onTvLink=function(r){linkState[r.ip]={state:r.state,msg:r.msg||''};paintLink()};
+function selectTv(i){
+  tvi=i;try{localStorage.setItem('onda-tvi',String(i))}catch(e){}
+  render();paintLink();
+}
+function pingAll(){var n=window.OndaNative;if(n&&n.tvPing)TVS.forEach(function(t){n.tvPing(t.ip)})}
+window.onTvLink=function(r){
+  var cur=linkState[r.ip]||{};
+  if((r.state==='online'||r.state==='offline')&&/ready|pairing|connecting/.test(cur.state))return;
+  linkState[r.ip]={state:r.state,msg:r.msg||''};paintLink();
+};
+setTimeout(pingAll,600);setInterval(pingAll,30000);
+/* a kijelző bal felső neve: koppintásra a másik TV lesz az aktív */
+(function(){
+  var o=document.getElementById('oSrc');o.style.cursor='pointer';o.title='Másik TV kiválasztása';
+  o.addEventListener('click',function(e){
+    e.stopPropagation();
+    selectTv((tvi+1)%TVS.length);fx('detent');
+    say('Aktív TV: '+curTv().n);toast(curTv().n);
+    var st=linkOf(curTv().ip);if(document.getElementById('kb').classList.contains('show'))connectTv();
+  });
+})();
 (function(){
   var inp=document.getElementById('kbInput'),buf='',bufT=0,txT=0;
   function commit(){clearTimeout(bufT);if(buf&&S.source===0){S.ch=clamp(parseInt(buf,10)||S.ch,1,99);bigCh();render()}buf=''}
@@ -632,7 +654,7 @@ function fx(kind,vel){
 
 /* ---------- üzenetek ---------- */
 var msgT;
-function defMsg(){if(L.mode)return hueName(L.h)+' · tel. '+L.s+'%';return S.app!==null&&S.source===3?'▶ '+APPS[S.app].n:'Görgess: hangerő'}
+function defMsg(){if(L.mode)return hueName(L.h)+' · tel. '+L.s+'%';return S.app!==null&&S.source===3?'▶ '+APPS[S.app].n:'Forrás: '+SOURCES[S.source]}
 function say(t){oMsg.textContent=t;clearTimeout(msgT);msgT=setTimeout(function(){oMsg.textContent=defMsg()},2400)}
 var toastT,toastEl=$('#toast');
 function toast(t){toastEl.textContent=t;toastEl.classList.add('show');clearTimeout(toastT);toastT=setTimeout(function(){toastEl.classList.remove('show')},1500)}
@@ -661,7 +683,7 @@ function render(){
   btnLed.setAttribute('aria-pressed',L.mode);
   $('#oLabel').textContent=L.mode?'FÉNYERŐ':'HANGERŐ';$('#lgLabel').textContent=L.mode?'FÉNYERŐ':'HANGERŐ';
   oVol.textContent=String(cv).padStart(3,'0');
-  oSrc.textContent=L.mode?'LED · '+L.h+'°':SOURCES[S.source].toUpperCase();
+  oSrc.textContent=L.mode?'LED · '+L.h+'°':TVS[tvi].s;
   oMute.textContent=L.mode?'FÉNY':'NÉMA';
   oMute.classList.toggle('on',L.mode?L.on:S.mute);oHap.classList.toggle('on',S.haptic);
   var oTv=$('#oTv');oTv.classList.toggle('on',T.seen);oTv.classList.toggle('tvok',T.seen);oTv.classList.toggle('scan',T.scan&&!T.seen&&!T.led);
@@ -709,7 +731,7 @@ function renderTV(){
   $('#tvTitle').textContent=title;$('#tvSub').textContent=sub;
   $('#prog').style.display=showProg?'':'none';$('#tvProg').style.width=(S.t/LEN*100)+'%';
   screen.classList.toggle('music',music&&S.playing||music);screen.classList.toggle('paused',!S.playing);
-  $('#tvSrc').textContent=SOURCES[S.source];
+  $('#tvSrc').textContent=TVS[tvi].n+' · '+SOURCES[S.source];
   $('#tvCh').textContent=S.source===0?'CH '+String(S.ch).padStart(2,'0'):'';
   for(var i=0;i<tiles.length;i++){tiles[i].classList.toggle('sel',i===S.sel);tiles[i].classList.toggle('act',S.source===3&&i===S.app)}
   osdEl.classList.toggle('muted',S.mute);

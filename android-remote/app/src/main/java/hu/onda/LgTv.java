@@ -77,6 +77,22 @@ final class LgTv {
         c.open(true, true);
     }
 
+    /** Csak elérhetőséget néz (nincs párosítás): fut-e a TV szolgáltatása a hálózaton. */
+    void ping(String ip) {
+        if (!valid(ip)) return;
+        new Thread(() -> {
+            boolean on = false;
+            for (int port : new int[]{3001, 3000}) {
+                try (java.net.Socket sk = new java.net.Socket()) {
+                    sk.connect(new java.net.InetSocketAddress(ip, port), 1500);
+                    on = true;
+                    break;
+                } catch (Exception ignored) { }
+            }
+            listener.onState(ip, on ? "online" : "offline", "");
+        }).start();
+    }
+
     synchronized void text(String ip, String text) {
         Conn c = conns.get(ip);
         if (c == null || !c.ready) return;
