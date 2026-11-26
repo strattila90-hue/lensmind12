@@ -49,14 +49,14 @@ button{font:inherit;color:inherit}
     inset 0 2px 3px rgba(255,255,255,.16), inset 0 -6px 12px rgba(0,0,0,.65), inset 3px 0 6px rgba(255,255,255,.04), inset -3px 0 6px rgba(0,0,0,.35),
     0 40px 60px -14px rgba(0,0,0,.55), 0 14px 26px rgba(0,0,0,.35);
   transform:perspective(calc(1700px*var(--k))) rotateX(var(--tx)) rotateY(var(--ty)) scale(var(--k));
-  transition:transform .35s cubic-bezier(.2,.8,.2,1);
+  transition:transform .18s ease-out;will-change:transform;
   touch-action:manipulation;user-select:none;-webkit-user-select:none;
 }
 .remote.flat{--tx:0deg!important;--ty:0deg!important}
-.remote::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:.07;mix-blend-mode:screen;
+.remote::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:.05;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
-.sheen{position:absolute;inset:0;border-radius:inherit;pointer-events:none;mix-blend-mode:screen;
-  background:radial-gradient(55% 28% at var(--lx) var(--ly),rgba(255,255,255,.13),transparent 72%)}
+.sheen{position:absolute;inset:0;border-radius:inherit;pointer-events:none;--lx:35%;--ly:12%;
+  background:radial-gradient(55% 28% at var(--lx) var(--ly),rgba(255,255,255,.09),transparent 72%)}
 
 .ir{width:100%;height:22px;display:flex;align-items:center;justify-content:space-between;padding:0 6px}
 .irwin{flex:none;width:92px;height:11px;border-radius:6px;background:linear-gradient(#150a0c,#2b1014);box-shadow:inset 0 1px 3px #000,0 1px 0 rgba(255,255,255,.1)}
@@ -127,7 +127,7 @@ button{font:inherit;color:inherit}
 .bezel{position:absolute;inset:0;border-radius:50%;
   background:linear-gradient(145deg,#0a0b0d,#23262b);
   box-shadow:0 0 0 1.5px #060708,0 2px 0 rgba(255,255,255,.1),inset 0 6px 14px rgba(0,0,0,.95),inset 0 -2px 3px rgba(255,255,255,.1),0 14px 22px -8px rgba(0,0,0,.65)}
-.ring{position:absolute;inset:12px;border-radius:50%;cursor:grab;touch-action:none;outline-offset:4px;
+.ring{position:absolute;inset:12px;border-radius:50%;cursor:grab;touch-action:none;will-change:transform;outline-offset:4px;
   background:
     repeating-conic-gradient(rgba(0,0,0,.42) 0 .9deg,rgba(255,255,255,.035) .9deg 3deg),
     radial-gradient(circle,#3a3d44 0,#2b2e34 58%,#43464e 100%);
@@ -138,8 +138,8 @@ button{font:inherit;color:inherit}
   -webkit-mask:radial-gradient(circle,transparent 111px,#000 112px,#000 122px,transparent 123px);mask:radial-gradient(circle,transparent 111px,#000 112px,#000 122px,transparent 123px)}
 .ring::after{content:"";position:absolute;top:9px;left:50%;width:9px;height:9px;margin-left:-4.5px;border-radius:50%;
   background:radial-gradient(circle,#ffe2b0,var(--amber) 55%,#a86a1e);box-shadow:0 0 0 1.5px rgba(0,0,0,.6),0 0 9px rgba(255,179,71,.85)}
-.sheen2{position:absolute;inset:12px;border-radius:50%;pointer-events:none;mix-blend-mode:overlay;
-  background:conic-gradient(from 18deg,transparent 0 6%,rgba(255,255,255,.55) 12%,transparent 20%,transparent 48%,rgba(255,255,255,.42) 62%,transparent 72%,transparent 100%);
+.sheen2{position:absolute;inset:12px;border-radius:50%;pointer-events:none;
+  background:conic-gradient(from 18deg,transparent 0 6%,rgba(255,255,255,.17) 12%,transparent 20%,transparent 48%,rgba(255,255,255,.13) 62%,transparent 72%,transparent 100%);
   -webkit-mask:radial-gradient(circle,transparent 66px,#000 67px);mask:radial-gradient(circle,transparent 66px,#000 67px)}
 .chev{position:absolute;width:22px;height:22px;margin:-11px;fill:none;stroke:#7b8088;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;transition:stroke .25s,filter .25s}
 .chev.u{left:50%;top:40px}.chev.d{left:50%;top:240px;rotate:180deg}.chev.l{left:40px;top:50%;rotate:-90deg}.chev.r{left:240px;top:50%;rotate:90deg}
@@ -234,18 +234,19 @@ button{font:inherit;color:inherit}
 .hints div{font-size:1.55cqw;line-height:1.35;border-top:1.5px solid color-mix(in srgb,var(--hint) 40%,transparent);padding-top:1cqw}
 .hints b{display:block;font-size:1.25cqw;letter-spacing:.22em;text-transform:uppercase;color:var(--hint-hi);margin-bottom:.4cqw;font-weight:600}
 
-/* RGB élfény a ház peremén */
-@property --ra{syntax:'<angle>';inherits:false;initial-value:0deg}
-.rgbrim{position:absolute;inset:0;border-radius:inherit;padding:2.5px;pointer-events:none;opacity:.95;transition:opacity .4s;
-  background:conic-gradient(from var(--ra),#ff2d55,#ff9500,#ffe600,#34c759,#00d4ff,#5856ff,#d946ef,#ff2d55);
+/* RGB élfény a ház peremén: a színkör transzformmal forog (GPU), tétlenül megáll */
+.rgbrim{position:absolute;inset:0;border-radius:inherit;padding:2.5px;pointer-events:none;opacity:.9;transition:opacity .4s;overflow:hidden;
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
-  mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);
-  animation:ra 7s linear infinite}
-.rgbrim.glow{filter:blur(10px);opacity:.6;padding:4px}
-@keyframes ra{to{--ra:360deg}}
+  mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
+.rgbrim b{position:absolute;left:50%;top:50%;width:1100px;height:1100px;margin:-550px 0 0 -550px;will-change:transform;
+  background:conic-gradient(#ff2d55,#ff9500,#ffe600,#34c759,#00d4ff,#5856ff,#d946ef,#ff2d55);animation:spin 8s linear infinite}
+.rgbrim.glow{filter:blur(8px);opacity:.55;padding:4px}
+.rgbrim.glow b{animation:none;will-change:auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.remote:not(.awake) .rgbrim b{animation-play-state:paused}
 .remote:not(.awake) .rgbrim{opacity:.55}
-.remote:not(.awake) .rgbrim.glow{opacity:.3}
-.remote.ledmode .rgbrim{background:conic-gradient(from var(--ra),var(--lc),hsl(calc(var(--lh) + 40) 90% 60%),var(--lc),hsl(calc(var(--lh) - 40) 90% 60%),var(--lc))}
+.remote:not(.awake) .rgbrim.glow{opacity:.28}
+.remote.ledmode .rgbrim b{background:conic-gradient(var(--lc),hsl(calc(var(--lh) + 40) 90% 60%),var(--lc),hsl(calc(var(--lh) - 40) 90% 60%),var(--lc))}
 /* LED fényvezérlő mód */
 .stage{position:relative;z-index:1}
 .room{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:var(--lo);transition:opacity .4s;
@@ -267,11 +268,12 @@ button{font:inherit;color:inherit}
 .btn.ledbtn[aria-pressed="true"]{color:var(--lc)}
 .btn.ledbtn[aria-pressed="true"] svg{filter:drop-shadow(0 0 5px var(--lc))}
 /* felismerés látványos jelzése */
-.remote.found .rgbrim{animation:ra 1.6s linear infinite,pulse .5s ease-in-out 6;opacity:1}
+.remote.found .rgbrim{animation:pulse .5s ease-in-out 6;opacity:1}
 .remote.found .rgbrim.glow{opacity:.95}
-.remote.found.f-tv .rgbrim{background:conic-gradient(from var(--ra),#34c759,#b6ffc9,#34c759,#1f9d45,#34c759)}
-.remote.found.f-led .rgbrim{background:conic-gradient(from var(--ra),#d946ef,#ffb3ff,#d946ef,#9a1fb2,#d946ef)}
-.remote.found.f-tv.f-led .rgbrim{background:conic-gradient(from var(--ra),#34c759,#d946ef,#34c759,#d946ef,#34c759)}
+.remote.found .rgbrim b{animation-play-state:running}
+.remote.found.f-tv .rgbrim b{background:conic-gradient(#34c759,#b6ffc9,#34c759,#1f9d45,#34c759)}
+.remote.found.f-led .rgbrim b{background:conic-gradient(#d946ef,#ffb3ff,#d946ef,#9a1fb2,#d946ef)}
+.remote.found.f-tv.f-led .rgbrim b{background:conic-gradient(#34c759,#d946ef,#34c759,#d946ef,#34c759)}
 @keyframes pulse{50%{filter:brightness(2.1)}}
 .tvframe.found{animation:tvfound .5s ease-in-out 5}
 @keyframes tvfound{50%{box-shadow:0 0 0 .6cqw #34c759,0 0 5cqw .8cqw #34c759}}
@@ -308,7 +310,7 @@ button{font:inherit;color:inherit}
 <main class="stage" id="stage">
   <div class="fit" id="fit">
     <section class="remote" id="remote" aria-label="Haptikus távirányító">
-      <i class="sheen"></i><i class="rgbrim glow"></i><i class="rgbrim"></i>
+      <i class="sheen"></i><i class="rgbrim glow"><b></b></i><i class="rgbrim"><b></b></i>
 
       <div class="ir"><span class="irwin"></span><span class="brand">Onda</span><i class="led" id="led"></i></div>
 
@@ -395,7 +397,7 @@ var $=function(s){return document.querySelector(s)};
 var clamp=function(v,a,b){return Math.min(b,Math.max(a,v))};
 var reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
 
-var remote=$('#remote'),fitEl=$('#fit'),led=$('#led'),tv=$('#tv'),screen=$('#screen');
+var K=.7,tilt0={x:0,y:0},remote=$('#remote'),fitEl=$('#fit'),led=$('#led'),tv=$('#tv'),screen=$('#screen');
 var oVol=$('#oVol'),oSrc=$('#oSrc'),oMsg=$('#oMsg'),oMute=$('#oMute'),oHap=$('#oHap'),oBar=$('#oBar'),oClock=$('#oClock');
 var slider=$('#vol'),thumb=$('#thumb'),scaleEl=$('#scale'),slot=slider.querySelector('.slot');
 var jog=$('#jog'),jtilt=$('#jtilt'),ring=$('#ring');
@@ -472,6 +474,22 @@ function fit(){
   var wide=w>820;
   var k=Math.min(h*.94/1000,(wide?w*.34:w*.9)/380,1.3);
   de.style.setProperty('--k',k.toFixed(4));
+  K=k;applyTilt(tilt0.x,tilt0.y);
+}
+var sheenEl=remote.querySelector('.sheen'),tiltRaf=0,tiltPend=null;
+function applyTilt(tx,ty){
+  tilt0.x=tx;tilt0.y=ty;
+  remote.style.transform='perspective('+(1700*K).toFixed(1)+'px) rotateX('+tx.toFixed(2)+'deg) rotateY('+ty.toFixed(2)+'deg) scale('+K.toFixed(4)+')';
+}
+function queueTilt(tx,ty,lx,ly){
+  tiltPend=[tx,ty,lx,ly];
+  if(tiltRaf)return;
+  tiltRaf=requestAnimationFrame(function(){
+    tiltRaf=0;var p=tiltPend;
+    if(Math.abs(p[0]-tilt0.x)+Math.abs(p[1]-tilt0.y)<.12)return; // apró rezgésre ne rajzoljon újra
+    applyTilt(p[0],p[1]);
+    sheenEl.style.setProperty('--lx',p[2].toFixed(1)+'%');sheenEl.style.setProperty('--ly',p[3].toFixed(1)+'%');
+  });
 }
 addEventListener('resize',fit);fit();
 
@@ -572,8 +590,7 @@ function fmt(s){return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 function render(){
   var cv=cur();
   remote.classList.toggle('off',!S.power&&!L.mode);remote.classList.toggle('muted',!L.mode&&S.mute);tv.classList.toggle('off',!S.power);
-  var rs=document.documentElement.style;
-  rs.setProperty('--lh',L.h);rs.setProperty('--ls',L.s);rs.setProperty('--lo',L.on?(L.b/100*.9).toFixed(3):0);
+  setRoot('--lh',String(L.h));setRoot('--ls',String(L.s));setRoot('--lo',L.on?(L.b/100*.9).toFixed(3):'0');
   remote.classList.toggle('ledmode',L.mode);remote.classList.toggle('ledoff',!L.on);
   btnLed.setAttribute('aria-pressed',L.mode);
   $('#oLabel').textContent=L.mode?'FÉNYERŐ':'HANGERŐ';$('#lgLabel').textContent=L.mode?'FÉNYERŐ':'HANGERŐ';
@@ -585,13 +602,34 @@ function render(){
   var oLs=$('#oLs');oLs.classList.toggle('on',T.led);oLs.classList.toggle('ledok',T.led);oLs.classList.toggle('scan',T.scan&&!T.led&&!T.seen);
   if(!msgT)oMsg.textContent=defMsg();
   var lit=Math.round(cv/100*segs.length);
-  for(var i=0;i<segs.length;i++)segs[i].classList.toggle('on',i<lit);
-  for(var j=0;j<ticks.length;j++)ticks[j].classList.toggle('on',cv>0&&j*5<=cv);
+  paintBars(cv);
   slider.style.setProperty('--v',cv/100);slider.setAttribute('aria-valuenow',cv);
   btnMute.setAttribute('aria-pressed',S.mute);btnHap.setAttribute('aria-pressed',S.haptic);btnPower.setAttribute('aria-pressed',S.power);
   $('#playUse').setAttribute('href',S.playing?'#i-pause':'#i-play');
   renderTV();
-  try{localStorage.setItem('onda',JSON.stringify({S:S,L:L}))}catch(e){}
+  saveSoon();
+}
+var rootCache={},segOn=[],tickOn=[],saveT=0;
+function setRoot(k,v){if(rootCache[k]!==v){rootCache[k]=v;document.documentElement.style.setProperty(k,v)}}
+function paintBars(cv){
+  var lit=Math.round(cv/100*segs.length),i,on;
+  for(i=0;i<segs.length;i++){on=i<lit;if(segOn[i]!==on){segOn[i]=on;segs[i].classList.toggle('on',on)}}
+  for(i=0;i<ticks.length;i++){on=cv>0&&i*5<=cv;if(tickOn[i]!==on){tickOn[i]=on;ticks[i].classList.toggle('on',on)}}
+}
+function saveSoon(){
+  if(saveT)return;
+  saveT=setTimeout(function(){saveT=0;try{localStorage.setItem('onda',JSON.stringify({S:S,L:L}))}catch(e){}},600);
+}
+var osdFill=$('#osdFill'),osdNum=$('#osdNum');
+/* könnyű frissítés csak hangerő / fényerő változáskor (húzás és görgetés közben) */
+function renderVol(){
+  var cv=cur();
+  oVol.textContent=String(cv).padStart(3,'0');
+  paintBars(cv);
+  slider.style.setProperty('--v',cv/100);slider.setAttribute('aria-valuenow',cv);
+  if(L.mode)setRoot('--lo',L.on?(L.b/100*.9).toFixed(3):'0');
+  else{osdFill.style.width=(S.mute?100:S.vol)+'%';osdNum.textContent=S.mute?'—':S.vol}
+  saveSoon();
 }
 function renderTV(){
   var app=S.app!==null?APPS[S.app]:null;
@@ -626,13 +664,14 @@ function commitVol(nv,ticks){
   var old=cur();if(nv===old)return;
   if(L.mode){var bs=Math.abs(Math.floor(nv/10)-Math.floor(old/10));if(bs)ir(nv>old?'BRIGHT_UP':'BRIGHT_DOWN',bs)}
   else ir(nv>old?'VOL_UP':'VOL_DOWN',Math.abs(nv-old));
-  if(L.mode){L.b=nv;L.on=true}else{S.vol=nv;if(S.mute)S.mute=false}
+  var heavy=false;
+  if(L.mode){if(!L.on)heavy=true;L.b=nv;L.on=true}else{S.vol=nv;if(S.mute){S.mute=false;heavy=true}}
   var c=detents(old,nv);
   if(nv===0||nv===100)fx('stop',.7);
   else if(c)fx('detent',.85+Math.min(.3,c*.08));
   else if(ticks)fx('tick');
   else wake();
-  if(!L.mode)osd();tx();render();
+  if(!L.mode)osd();tx();if(heavy)render();else renderVol();
 }
 function stepVol(d,nudgeOK){
   var nv=clamp(cur()+d,0,100);
@@ -719,7 +758,7 @@ function jogStep(dir){
   if(L.mode){L.h=(L.h+dir*15+360)%360;L.on=true;ledColor();fx('detent');say(hueName(L.h)+' · '+L.h+'°');tx();render();return}
   ir(dir>0?'RIGHT':'LEFT');
   S.sel=(S.sel+dir+APPS.length)%APPS.length;
-  fx('detent');say('KERÉK › '+APPS[S.sel].n);tx();renderTV();
+  fx('detent');say('KERÉK › '+APPS[S.sel].n);tx();for(var q=0;q<tiles.length;q++){tiles[q].classList.toggle('sel',q===S.sel)}
 }
 function loop(){
   if(J.fling){
@@ -818,15 +857,14 @@ document.querySelectorAll('[data-act],[data-vol]').forEach(function(b){
 });
 
 /* ---------- dőlés a kurzor felé ---------- */
-remote.addEventListener('pointerdown',function(){remote.classList.add('flat')});
+remote.addEventListener('pointerdown',function(){remote.classList.add('flat');applyTilt(0,0)});
 ['pointerup','pointercancel'].forEach(function(n){addEventListener(n,function(){remote.classList.remove('flat')})});
 if(!reduce&&matchMedia('(pointer:fine)').matches){
   addEventListener('pointermove',function(e){
     if(remote.classList.contains('flat'))return;
     var r=fitEl.getBoundingClientRect();
     var nx=clamp((e.clientX-(r.left+r.width/2))/(innerWidth/2),-1,1),ny=clamp((e.clientY-(r.top+r.height/2))/(innerHeight/2),-1,1);
-    remote.style.setProperty('--ty',(nx*4.5).toFixed(2)+'deg');remote.style.setProperty('--tx',(-ny*3).toFixed(2)+'deg');
-    remote.style.setProperty('--lx',(50+nx*38).toFixed(1)+'%');remote.style.setProperty('--ly',(22+ny*24).toFixed(1)+'%');
+    queueTilt(-ny*3,nx*4.5,50+nx*38,22+ny*24);
   });
 }
 
@@ -835,8 +873,7 @@ if(!reduce&&window.DeviceOrientationEvent&&matchMedia('(pointer:coarse)').matche
   addEventListener('deviceorientation',function(e){
     if(e.gamma==null||remote.classList.contains('flat'))return;
     var g=clamp(e.gamma,-25,25),b=clamp((e.beta||0)-50,-25,25);
-    remote.style.setProperty('--ty',(g*.35).toFixed(2)+'deg');remote.style.setProperty('--tx',(-b*.25).toFixed(2)+'deg');
-    remote.style.setProperty('--lx',(50+g*1.6).toFixed(1)+'%');remote.style.setProperty('--ly',(22+b).toFixed(1)+'%');
+    queueTilt(-b*.25,g*.35,50+g*1.6,22+b);
   });
 }
 

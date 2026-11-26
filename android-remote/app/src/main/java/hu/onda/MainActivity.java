@@ -73,6 +73,8 @@ public class MainActivity extends ComponentActivity {
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(true);
+        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setWebViewClient(new WebViewClient());
         web.addJavascriptInterface(new Bridge(), "OndaNative");
         buildLayout();
