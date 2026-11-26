@@ -1,6 +1,41 @@
 package hu.onda;
 
-import android.app.Activity;
+import androidx.activity.ComponentActivity;
+import androidx.annotation.OptIn;
+import androidx.camera.core.CameraSelector;
+import androidx.camera.core.ExperimentalGetImage;
+import androidx.camera.core.ImageAnalysis;
+import androidx.camera.core.ImageProxy;
+import androidx.camera.core.Preview;
+import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.view.PreviewView;
+import androidx.core.content.ContextCompat;
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.label.ImageLabel;
+import com.google.mlkit.vision.label.ImageLabeler;
+import com.google.mlkit.vision.label.ImageLabeling;
+import com.google.mlkit.vision.label.defaults.ImageLabelerOptions;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.graphics.Outline;
+import android.graphics.drawable.GradientDrawable;
+import android.os.SystemClock;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewOutlineProvider;
+import android.widget.FrameLayout;
+import android.widget.TextView;
 import android.app.AlertDialog;
 import android.graphics.Color;
 import android.os.Build;
@@ -17,7 +52,7 @@ import android.widget.Toast;
 
 import java.io.File;
 
-public class MainActivity extends Activity {
+public class MainActivity extends ComponentActivity {
 
     private WebView web;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -38,7 +73,7 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(true);
         web.setWebViewClient(new WebViewClient());
         web.addJavascriptInterface(new Bridge(), "OndaNative");
-        setContentView(web);
+        buildLayout();
         web.loadUrl("file:///android_asset/index.html");
         scheduleBackgroundUpdates();
     }
@@ -67,6 +102,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        stopScan("szünet");
         ui.removeCallbacks(periodic);
         web.onPause();
         super.onPause();
@@ -119,8 +155,182 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    // ===================== Mini scan ablak: a TV azonosítása a kamerával =====================
+    private static final Set<String> TV_LABELS = new HashSet<>(Arrays.asList(
+            "Television", "Display device", "Computer monitor", "Monitor", "Screen", "Flat panel display"));
+    private static final Map<String, String> HU = new HashMap<>();
+    static {
+        HU.put("Television", "Televízió"); HU.put("Display device", "Kijelző"); HU.put("Computer monitor", "Monitor");
+        HU.put("Monitor", "Monitor"); HU.put("Screen", "Képernyő"); HU.put("Flat panel display", "Lapos kijelző");
+        HU.put("Lamp", "Lámpa"); HU.put("Room", "Szoba"); HU.put("Couch", "Kanapé"); HU.put("Table", "Asztal");
+        HU.put("Laptop", "Laptop"); HU.put("Chair", "Szék"); HU.put("Window", "Ablak"); HU.put("Book", "Könyv");
+    }
+
+    private FrameLayout scanBox;
+    private PreviewView preview;
+    private ScanOverlay overlay;
+    private TextView scanText;
+    private boolean scanning;
+    private boolean tvSeen;
+    private long lastAnalysis;
+    private ExecutorService camExec;
+    private ImageLabeler labeler;
+    private final Runnable scanTimeout = () -> stopScan("Idő lejárt");
+
+    private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
+
+    private void buildLayout() {
+        FrameLayout root = new FrameLayout(this);
+        root.addView(web, new FrameLayout.LayoutParams(-1, -1));
+
+        scanBox = new FrameLayout(this);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xFF050506);
+        bg.setCornerRadius(dp(16));
+        bg.setStroke(dp(2), 0xFF3A3E46);
+        scanBox.setBackground(bg);
+        scanBox.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dp(16)); }
+        });
+        scanBox.setClipToOutline(true);
+        scanBox.setElevation(dp(10));
+        scanBox.setVisibility(View.GONE);
+
+        preview = new PreviewView(this);
+        preview.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
+        scanBox.addView(preview, new FrameLayout.LayoutParams(-1, -1));
+        overlay = new ScanOverlay(this);
+        scanBox.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
+        scanText = new TextView(this);
+        scanText.setTextColor(0xFFFFB347);
+        scanText.setTextSize(11);
+        scanText.setTypeface(android.graphics.Typeface.MONOSPACE);
+        scanText.setGravity(Gravity.CENTER);
+        scanText.setBackgroundColor(0xCC050506);
+        scanText.setPadding(dp(4), dp(4), dp(4), dp(4));
+        scanText.setText("TV KERESÉSE…");
+        FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(-1, -2);
+        tp.gravity = Gravity.BOTTOM;
+        scanBox.addView(scanText, tp);
+
+        FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(dp(116), dp(156));
+        sp.gravity = Gravity.BOTTOM | Gravity.END;
+        sp.setMargins(dp(12), dp(12), dp(12), dp(24));
+        root.addView(scanBox, sp);
+
+        // az ablak áthúzható
+        final float[] d = new float[2];
+        scanBox.setOnTouchListener((v, e) -> {
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN: d[0] = v.getX() - e.getRawX(); d[1] = v.getY() - e.getRawY(); return true;
+                case MotionEvent.ACTION_MOVE: v.setX(e.getRawX() + d[0]); v.setY(e.getRawY() + d[1]); return true;
+                default: return false;
+            }
+        });
+        setContentView(root);
+    }
+
+    private void jsScanState(boolean on) {
+        web.evaluateJavascript("window.onTvScanState&&window.onTvScanState(" + on + ")", null);
+    }
+
+    private void startScan() {
+        if (scanning) return;
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, 11);
+            return;
+        }
+        scanning = true;
+        tvSeen = false;
+        if (camExec == null) camExec = Executors.newSingleThreadExecutor();
+        if (labeler == null) labeler = ImageLabeling.getClient(new ImageLabelerOptions.Builder().setConfidenceThreshold(0.6f).build());
+        scanBox.setVisibility(View.VISIBLE);
+        scanText.setText("TV KERESÉSE…");
+        overlay.setFound(false);
+        overlay.run(true);
+        ui.removeCallbacks(scanTimeout);
+        ui.postDelayed(scanTimeout, 60_000L);
+        ProcessCameraProvider.getInstance(this).addListener(() -> {
+            try {
+                ProcessCameraProvider provider = ProcessCameraProvider.getInstance(this).get();
+                Preview p = new Preview.Builder().build();
+                p.setSurfaceProvider(preview.getSurfaceProvider());
+                ImageAnalysis ia = new ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build();
+                ia.setAnalyzer(camExec, this::analyze);
+                provider.unbindAll();
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, p, ia);
+            } catch (Exception e) {
+                stopScan("Kamera hiba");
+            }
+        }, ContextCompat.getMainExecutor(this));
+    }
+
+    private void stopScan(String why) {
+        ui.removeCallbacks(scanTimeout);
+        if (!scanning && scanBox.getVisibility() != View.VISIBLE) return;
+        scanning = false;
+        overlay.run(false);
+        scanBox.setVisibility(View.GONE);
+        try { ProcessCameraProvider.getInstance(this).get().unbindAll(); } catch (Exception ignored) { }
+        jsScanState(false);
+    }
+
+    @OptIn(markerClass = ExperimentalGetImage.class)
+    private void analyze(ImageProxy proxy) {
+        long now = SystemClock.elapsedRealtime();
+        if (proxy.getImage() == null || now - lastAnalysis < 600 || !scanning) { proxy.close(); return; }
+        lastAnalysis = now;
+        InputImage in = InputImage.fromMediaImage(proxy.getImage(), proxy.getImageInfo().getRotationDegrees());
+        labeler.process(in)
+                .addOnSuccessListener(labels -> ui.post(() -> onLabels(labels)))
+                .addOnCompleteListener(t -> proxy.close());
+    }
+
+    private void onLabels(List<ImageLabel> labels) {
+        if (!scanning) return;
+        boolean tv = false;
+        String top = null;
+        JSONArray names = new JSONArray();
+        for (ImageLabel l : labels) {
+            String n = l.getText();
+            String hu = HU.containsKey(n) ? HU.get(n) : n;
+            names.put(hu);
+            if (top == null) top = hu;
+            if (TV_LABELS.contains(n)) { tv = true; top = hu; }
+        }
+        overlay.setFound(tv);
+        scanText.setTextColor(tv ? 0xFF34C759 : 0xFFFFB347);
+        scanText.setText(tv ? "TV AZONOSÍTVA" : (top == null ? "TV KERESÉSE…" : top.toUpperCase()));
+        if (tv != tvSeen || tv) {
+            tvSeen = tv;
+            try {
+                JSONObject o = new JSONObject();
+                o.put("tv", tv);
+                o.put("label", top == null ? "" : top);
+                o.put("labels", names);
+                web.evaluateJavascript("window.onTvScan&&window.onTvScan(" + o + ")", null);
+            } catch (Exception ignored) { }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(code, perms, res);
+        if (code == 11) {
+            if (res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED) startScan();
+            else { Toast.makeText(this, "A TV-kereséshez kamera engedély kell.", Toast.LENGTH_LONG).show(); jsScanState(false); }
+        }
+    }
+
+
     /** A weboldal innen kéri a rezgést: gombnyomásra tompa puffanás, tekeréskor apró kattanás. */
     private final class Bridge {
+        @JavascriptInterface
+        public void scan(boolean on) {
+            ui.post(() -> { if (on) startScan(); else stopScan("kézzel"); });
+        }
+
         @JavascriptInterface
         public void haptic(String kind) {
             Vibrator v = (Vibrator) getSystemService(VIBRATOR_SERVICE);

@@ -42,4 +42,12 @@ android {
 
 dependencies {
     implementation("androidx.core:core:1.13.1")
+    implementation("androidx.activity:activity:1.9.0")
+    val camerax = "1.3.4"
+    implementation("androidx.camera:camera-core:$camerax")
+    implementation("androidx.camera:camera-camera2:$camerax")
+    implementation("androidx.camera:camera-lifecycle:$camerax")
+    implementation("androidx.camera:camera-view:$camerax")
+    // Offline képfelismerés a TV azonosításához (mint a régi Lens Mind)
+    implementation("com.google.mlkit:image-labeling:17.0.9")
 }

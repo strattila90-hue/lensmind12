@@ -75,6 +75,10 @@ button{font:inherit;color:inherit}
 .remote:not(.awake) .oled{filter:brightness(.62)}
 .o-top{display:flex;justify-content:space-between;font-size:16px;letter-spacing:.08em}
 .o-flags{display:flex;gap:10px}
+.oled{cursor:pointer}
+.o-flags b.scan{animation:blink .9s steps(2,start) infinite;opacity:1}
+.o-flags b.tvok{color:#5dff8a;text-shadow:0 0 8px rgba(93,255,138,.9)}
+@keyframes blink{50%{opacity:.15}}
 .o-flags b{font-weight:400;opacity:.16;transition:opacity .2s}
 .o-flags b.on{opacity:1;text-shadow:0 0 8px rgba(255,179,71,.8)}
 .o-mid{display:flex;align-items:center;gap:16px}
@@ -293,7 +297,7 @@ button{font:inherit;color:inherit}
       <div class="ir"><span class="irwin"></span><span class="brand">Onda</span><i class="led" id="led"></i></div>
 
       <div class="oled" id="oled" aria-live="polite">
-        <div class="o-top"><span id="oSrc">STREAMING</span><span class="o-flags"><b id="oMute">NÉMA</b><b id="oHap">HAPT</b></span></div>
+        <div class="o-top"><span id="oSrc">STREAMING</span><span class="o-flags"><b id="oTv">TV</b><b id="oMute">NÉMA</b><b id="oHap">HAPT</b></span></div>
         <div class="o-mid"><span class="o-vol" id="oVol">032</span>
           <div class="o-info"><span class="o-label" id="oLabel">HANGERŐ</span><span class="o-msg" id="oMsg">Görgess: hangerő</span></div></div>
         <div class="o-bar" id="oBar"></div>
@@ -397,6 +401,22 @@ function hueName(h){
   for(var i=0;i<n.length;i++)if(h<n[i][0])return n[i][1];return 'Piros';
 }
 var btnLed=document.querySelector('[data-act="led"]');
+/* TV-azonosító (mini scan ablak): az APK kamerája küld eredményt, érintsd meg a kijelzőt a indításhoz */
+var T={scan:false,seen:false,announced:false};
+document.getElementById('oled').addEventListener('click',function(){
+  var n=window.OndaNative;
+  if(n&&n.scan){
+    T.scan=!T.scan;T.seen=false;T.announced=false;n.scan(T.scan);
+    say(T.scan?'TV keresése…':'Keresés leállítva');fx('down');render();
+  }else{say('Kamera: csak az appban');toast('A TV-kereső a telepíthető appban működik')}
+});
+window.onTvScan=function(r){
+  T.seen=!!r.tv;
+  if(r.tv&&!T.announced){T.announced=true;fx('detent');say('TV azonosítva · '+r.label);toast('TV azonosítva');}
+  if(!r.tv)T.announced=false;
+  render();
+};
+window.onTvScanState=function(on){T.scan=on;if(!on)T.seen=T.seen;render()};
 
 /* ---------- fit ---------- */
 function fit(){
@@ -513,6 +533,7 @@ function render(){
   oSrc.textContent=L.mode?'LED · '+L.h+'°':SOURCES[S.source].toUpperCase();
   oMute.textContent=L.mode?'LED':'NÉMA';
   oMute.classList.toggle('on',L.mode?L.on:S.mute);oHap.classList.toggle('on',S.haptic);
+  var oTv=$('#oTv');oTv.classList.toggle('on',T.seen);oTv.classList.toggle('tvok',T.seen);oTv.classList.toggle('scan',T.scan&&!T.seen);
   if(!msgT)oMsg.textContent=defMsg();
   var lit=Math.round(cv/100*segs.length);
   for(var i=0;i<segs.length;i++)segs[i].classList.toggle('on',i<lit);
