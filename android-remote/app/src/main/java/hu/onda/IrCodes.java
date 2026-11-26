@@ -34,6 +34,8 @@ final class IrCodes {
             case "UP": return 0x40; case "DOWN": return 0x41; case "LEFT": return 0x07; case "RIGHT": return 0x06;
             case "OK": return 0x44; case "BACK": return 0x28; case "HOME": return 0x7C;
             case "CH_UP": return 0x00; case "CH_DOWN": return 0x01;
+            case "D0": return 0x10; case "D1": return 0x11; case "D2": return 0x12; case "D3": return 0x13; case "D4": return 0x14;
+            case "D5": return 0x15; case "D6": return 0x16; case "D7": return 0x17; case "D8": return 0x18; case "D9": return 0x19;
             case "SOURCE": return 0x0B; case "MENU": return 0x43;
             case "PLAY": return 0xB0; case "PAUSE": return 0xBA; case "NEXT": return 0x8E; case "PREV": return 0x8F;
             default: return -1;

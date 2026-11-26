@@ -247,12 +247,22 @@ button{font:inherit;color:inherit}
 .remote:not(.awake) .rgbrim{opacity:.55}
 .remote:not(.awake) .rgbrim.glow{opacity:.28}
 .remote.ledmode .rgbrim b{background:conic-gradient(var(--lc),hsl(calc(var(--lh) + 40) 90% 60%),var(--lc),hsl(calc(var(--lh) - 40) 90% 60%),var(--lc))}
+/* számbevitel billentyűzettel */
+.kb{position:absolute;left:28px;right:28px;bottom:26px;z-index:20;display:none;flex-direction:column;gap:10px;padding:14px 14px 12px;border-radius:22px;
+  background:linear-gradient(#1a1c20,#101214);box-shadow:0 0 0 1.5px #000,0 16px 30px rgba(0,0,0,.7),inset 0 1.5px 2px rgba(255,255,255,.14)}
+.kb.show{display:flex}
+.kb label{font-size:11px;letter-spacing:.24em;color:#8b9097;text-transform:uppercase;font-weight:600}
+.kb input{width:100%;height:46px;border-radius:12px;border:0;padding:0 14px;background:#040405;color:var(--amber);font:600 24px var(--font-lcd);letter-spacing:.14em;
+  box-shadow:inset 0 3px 7px #000,0 1.2px 0 rgba(255,255,255,.1);outline-offset:2px}
+.kb .kbrow{display:flex;gap:10px}
+.kb .btn{width:auto;height:42px;flex:1;border-radius:21px;font-size:13px;letter-spacing:.16em;font-weight:600;color:var(--amber)}
+.kb small{font-size:11px;line-height:1.35;color:#7b8088}
 /* LED fényvezérlő mód */
 .stage{position:relative;z-index:1}
 .room{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:var(--lo);transition:opacity .4s;
   background:radial-gradient(60% 62% at 50% 52%,color-mix(in srgb,var(--lc) 60%,transparent),transparent 75%)}
-.row.r5 .btn{width:50px;height:50px}
-.row.r5 .btn svg{width:21px;height:21px}
+.row.r5 .btn{width:44px;height:44px}
+.row.r5 .btn svg{width:20px;height:20px}
 .remote.ledmode .oled{color:var(--lc)}
 .remote.ledmode .o-vol{text-shadow:0 0 14px var(--lc)}
 .remote.ledmode .o-flags b.on{text-shadow:0 0 8px var(--lc)}
@@ -302,6 +312,7 @@ button{font:inherit;color:inherit}
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8.5 5v14M15.5 5v14"/></symbol>
     <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1.1 1.2 1.1 2.2h5c0-1 .5-1.7 1.1-2.2A6 6 0 0 0 12 3z"/></symbol>
+    <symbol id="i-kb" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M7 14h10"/></symbol>
     <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
   </defs>
 </svg>
@@ -326,6 +337,7 @@ button{font:inherit;color:inherit}
         <button class="btn danger" data-act="power" aria-label="Be- és kikapcsolás" aria-pressed="true"><svg><use href="#i-power"/></svg></button>
         <button class="btn" data-act="source" aria-label="Forrás váltása"><svg><use href="#i-source"/></svg></button>
         <button class="btn" data-act="mute" aria-label="Némítás" aria-pressed="false"><svg><use href="#i-mute"/></svg></button>
+        <button class="btn" data-act="text" aria-label="Számbevitel billentyűzettel" aria-pressed="false"><svg><use href="#i-kb"/></svg></button>
         <button class="btn ledbtn" data-act="led" aria-label="LED fényvezérlő mód" aria-pressed="false"><svg><use href="#i-bulb"/></svg></button>
         <button class="btn hap" data-act="haptic" aria-label="Hang és rezgés" aria-pressed="true"><svg><use href="#i-hap"/></svg></button>
       </div>
@@ -353,6 +365,12 @@ button{font:inherit;color:inherit}
         <button class="btn wide" data-act="next" aria-label="Következő"><svg><use href="#i-next"/></svg></button>
       </div>
 
+      <div class="kb" id="kb">
+        <label for="kbInput">Számbevitel a TV-nek</label>
+        <input id="kbInput" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="csatorna, PIN…">
+        <small>Az infravörös csak számokat tud küldeni. Betűkhöz Wi-Fi kapcsolat kell.</small>
+        <div class="kbrow"><button class="btn" id="kbOk" type="button">OK</button><button class="btn" id="kbClose" type="button">Bezár</button></div>
+      </div>
       <div class="volbox">
         <div class="vol" id="vol" role="slider" tabindex="0" aria-label="Hangerő" aria-valuemin="0" aria-valuemax="100" aria-valuenow="32">
           <div class="scale" id="scale"></div>
@@ -419,7 +437,7 @@ function hueName(h){
   var n=[[15,'Piros'],[45,'Narancs'],[70,'Sárga'],[160,'Zöld'],[200,'Türkiz'],[255,'Kék'],[290,'Lila'],[335,'Rózsaszín'],[361,'Piros']];
   for(var i=0;i<n.length;i++)if(h<n[i][0])return n[i][1];return 'Piros';
 }
-var btnLed=document.querySelector('[data-act="led"]');
+var btnLed=document.querySelector('[data-act="led"]'),btnText=document.querySelector('[data-act="text"]');
 /* TV-azonosító (mini scan ablak): az APK kamerája küld eredményt, érintsd meg a kijelzőt a indításhoz */
 /* valódi IR: az APK a telefon IR adóján át küldi az LG TV-nek és a LED-szalagnak */
 var irWarned=false,lastColor='';
@@ -434,6 +452,19 @@ function ledColor(force){
   if(force||k!==lastColor){lastColor=k;ir(k)}
 }
 var T={scan:false,seen:false,led:false,announced:false,announcedLed:false};
+/* számbevitel: minden beírt számjegy azonnal valódi IR jelként megy az LG TV-nek */
+(function(){
+  var inp=document.getElementById('kbInput'),buf='',bufT=0;
+  function commit(){clearTimeout(bufT);if(buf&&S.source===0){S.ch=clamp(parseInt(buf,10)||S.ch,1,99);bigCh();render()}buf=''}
+  inp.addEventListener('input',function(){
+    var v=inp.value,last=v.slice(-1);
+    if(/[^0-9]/.test(v)){inp.value=v.replace(/[^0-9]/g,'');if(/[^0-9]/.test(last)){say('Betűkhöz Wi-Fi kell');toast('Az IR csak számokat küld')}return}
+    if(last){ir('D'+last);fx('tick');buf+=last;if(S.source===0){bigEl.textContent=buf.padStart(2,'0');bigEl.classList.add('show')}clearTimeout(bufT);bufT=setTimeout(commit,1600)}
+  });
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();ir('OK');fx('down');commit()}});
+  document.getElementById('kbOk').addEventListener('click',function(){ir('OK');fx('down');commit();tx()});
+  document.getElementById('kbClose').addEventListener('click',function(){A.text()});
+})();
 (function(){
   var t;
   btnLed.addEventListener('pointerdown',function(){t=setTimeout(function(){t=null;L.fam=L.fam==='A'?'B':'A';btnLed.dataset.skip='1';say('LED típus: '+L.fam);toast('LED típus: '+L.fam);render()},650)});
@@ -803,7 +834,7 @@ function dirClick(z){
   if(z==='left'){J.target-=STEP;kick()}
   else if(z==='right'){J.target+=STEP;kick()}
   else{
-    ir(z==='up'?'CH_UP':'CH_DOWN');S.ch=((S.ch-1+(z==='up'?1:-1)+99)%99)+1;S.source=0;bigCh();say('CH '+S.ch+' · '+CHN[(S.ch-1)%CHN.length]);render();
+    ir(z==='up'?'UP':'DOWN');say(z==='up'?'▲ FEL':'▼ LE');toast(z==='up'?'Fel':'Le');
   }
 }
 ring.addEventListener('keydown',function(e){
@@ -820,6 +851,11 @@ var A={
   },
   source:function(){ir('SOURCE');S.source=(S.source+1)%SOURCES.length;say('FORRÁS › '+SOURCES[S.source]);toast(SOURCES[S.source]);render()},
   mute:function(){ir('MUTE');S.mute=!S.mute;say(S.mute?'Némítva':'Hang be');toast(S.mute?'Némítva':'Hang be');osd();render()},
+  text:function(){
+    var kb=document.getElementById('kb'),on=!kb.classList.contains('show');
+    kb.classList.toggle('show',on);btnText.setAttribute('aria-pressed',on);
+    if(on){var i=document.getElementById('kbInput');i.value='';setTimeout(function(){i.focus()},60)}else document.getElementById('kbInput').blur();
+  },
   haptic:function(){
     S.haptic=!S.haptic;
     if(S.haptic){fx('down');say('Hang és rezgés be')}else{say('Hang és rezgés ki')}
@@ -828,8 +864,8 @@ var A={
   back:function(){ir('BACK');if(S.app!==null&&S.source===3){S.app=null;say('Vissza › Kezdőlap')}else say('Vissza');toast('Vissza');render()},
   home:function(){ir('HOME');S.app=null;S.source=3;say('Kezdőlap');toast('Kezdőlap');render()},
   menu:function(){ir('MENU');say('Menü');toast('Menü');render()},
-  prev:function(){ir('PREV');S.track=(S.track+TRACKS.length-1)%TRACKS.length;S.t=0;say('◀◀ '+TRACKS[S.track]);toast('Előző');render()},
-  next:function(){ir('NEXT');S.track=(S.track+1)%TRACKS.length;S.t=0;say('▶▶ '+TRACKS[S.track]);toast('Következő');render()},
+  prev:function(){if(S.source===0){ir('CH_DOWN');S.ch=((S.ch-2+99)%99)+1;bigCh();say('CH '+S.ch);render();return}ir('PREV');S.track=(S.track+TRACKS.length-1)%TRACKS.length;S.t=0;say('◀◀ '+TRACKS[S.track]);toast('Előző');render()},
+  next:function(){if(S.source===0){ir('CH_UP');S.ch=(S.ch%99)+1;bigCh();say('CH '+S.ch);render();return}ir('NEXT');S.track=(S.track+1)%TRACKS.length;S.t=0;say('▶▶ '+TRACKS[S.track]);toast('Következő');render()},
   play:function(){S.playing=!S.playing;ir(S.playing?'PLAY':'PAUSE');say(S.playing?'▶ Lejátszás':'❚❚ Szünet');toast(S.playing?'Lejátszás':'Szünet');render()},
   led:function(){
     if(btnLed.dataset.skip){delete btnLed.dataset.skip;return}
@@ -845,7 +881,7 @@ function run(b){
   tx();
   var act=b.dataset.act;
   if(act){
-    if(!S.power&&act!=='power'&&act!=='haptic'&&act!=='led'&&!(L.mode&&act==='ok'))return;
+    if(!S.power&&act!=='power'&&act!=='haptic'&&act!=='led'&&act!=='text'&&!(L.mode&&act==='ok'))return;
     A[act]();
   }else if(b.dataset.vol){stepVol(+b.dataset.vol)}
 }
