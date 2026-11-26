@@ -42,6 +42,8 @@ android {
 
 dependencies {
     implementation("androidx.core:core:1.13.1")
+    // egységes Kotlin-futtatókönyvtár (a CameraX/ML Kit régi jdk7/jdk8 darabjai ütköznének)
+    implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.8.22"))
     implementation("androidx.activity:activity:1.9.0")
     val camerax = "1.3.4"
     implementation("androidx.camera:camera-core:$camerax")
