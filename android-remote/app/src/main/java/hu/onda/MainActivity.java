@@ -158,11 +158,15 @@ public class MainActivity extends ComponentActivity {
     // ===================== Mini scan ablak: a TV azonosítása a kamerával =====================
     private static final Set<String> TV_LABELS = new HashSet<>(Arrays.asList(
             "Television", "Display device", "Computer monitor", "Monitor", "Screen", "Flat panel display"));
+    private static final Set<String> LED_LABELS = new HashSet<>(Arrays.asList(
+            "Lamp", "Light", "Lighting", "Light fixture", "Neon", "Light-emitting diode", "LED", "Light bulb",
+            "Christmas lights", "Chandelier", "Lantern", "Lights", "Stage lighting", "Spotlight", "Strip lighting"));
     private static final Map<String, String> HU = new HashMap<>();
     static {
         HU.put("Television", "Televízió"); HU.put("Display device", "Kijelző"); HU.put("Computer monitor", "Monitor");
         HU.put("Monitor", "Monitor"); HU.put("Screen", "Képernyő"); HU.put("Flat panel display", "Lapos kijelző");
-        HU.put("Lamp", "Lámpa"); HU.put("Room", "Szoba"); HU.put("Couch", "Kanapé"); HU.put("Table", "Asztal");
+        HU.put("Lamp", "Lámpa"); HU.put("Light", "Fény"); HU.put("Lighting", "Világítás"); HU.put("Light fixture", "Lámpatest");
+        HU.put("Neon", "Neon"); HU.put("Light-emitting diode", "LED"); HU.put("Light bulb", "Izzó"); HU.put("Christmas lights", "Fényfüzér"); HU.put("Room", "Szoba"); HU.put("Couch", "Kanapé"); HU.put("Table", "Asztal");
         HU.put("Laptop", "Laptop"); HU.put("Chair", "Szék"); HU.put("Window", "Ablak"); HU.put("Book", "Könyv");
     }
 
@@ -172,6 +176,7 @@ public class MainActivity extends ComponentActivity {
     private TextView scanText;
     private boolean scanning;
     private boolean tvSeen;
+    private boolean ledSeen;
     private long lastAnalysis;
     private ExecutorService camExec;
     private ImageLabeler labeler;
@@ -208,7 +213,7 @@ public class MainActivity extends ComponentActivity {
         scanText.setGravity(Gravity.CENTER);
         scanText.setBackgroundColor(0xCC050506);
         scanText.setPadding(dp(4), dp(4), dp(4), dp(4));
-        scanText.setText("TV KERESÉSE…");
+        scanText.setText("TV / LED KERESÉSE…");
         FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(-1, -2);
         tp.gravity = Gravity.BOTTOM;
         scanBox.addView(scanText, tp);
@@ -242,11 +247,12 @@ public class MainActivity extends ComponentActivity {
         }
         scanning = true;
         tvSeen = false;
+        ledSeen = false;
         if (camExec == null) camExec = Executors.newSingleThreadExecutor();
         if (labeler == null) labeler = ImageLabeling.getClient(new ImageLabelerOptions.Builder().setConfidenceThreshold(0.6f).build());
         scanBox.setVisibility(View.VISIBLE);
-        scanText.setText("TV KERESÉSE…");
-        overlay.setFound(false);
+        scanText.setText("TV / LED KERESÉSE…");
+        overlay.setState(false, false);
         overlay.run(true);
         ui.removeCallbacks(scanTimeout);
         ui.postDelayed(scanTimeout, 60_000L);
@@ -289,7 +295,7 @@ public class MainActivity extends ComponentActivity {
 
     private void onLabels(List<ImageLabel> labels) {
         if (!scanning) return;
-        boolean tv = false;
+        boolean tv = false, led = false;
         String top = null;
         JSONArray names = new JSONArray();
         for (ImageLabel l : labels) {
@@ -298,15 +304,19 @@ public class MainActivity extends ComponentActivity {
             names.put(hu);
             if (top == null) top = hu;
             if (TV_LABELS.contains(n)) { tv = true; top = hu; }
+            if (LED_LABELS.contains(n)) { led = true; if (!tv) top = hu; }
         }
-        overlay.setFound(tv);
-        scanText.setTextColor(tv ? 0xFF34C759 : 0xFFFFB347);
-        scanText.setText(tv ? "TV AZONOSÍTVA" : (top == null ? "TV KERESÉSE…" : top.toUpperCase()));
-        if (tv != tvSeen || tv) {
+        overlay.setState(tv, led);
+        scanText.setTextColor(tv ? 0xFF34C759 : led ? 0xFFD946EF : 0xFFFFB347);
+        scanText.setText(tv && led ? "TV + LED AZONOSÍTVA" : tv ? "TV AZONOSÍTVA" : led ? "LED AZONOSÍTVA"
+                : (top == null ? "TV / LED KERESÉSE…" : top.toUpperCase()));
+        if (tv != tvSeen || led != ledSeen || tv || led) {
             tvSeen = tv;
+            ledSeen = led;
             try {
                 JSONObject o = new JSONObject();
                 o.put("tv", tv);
+                o.put("led", led);
                 o.put("label", top == null ? "" : top);
                 o.put("labels", names);
                 web.evaluateJavascript("window.onTvScan&&window.onTvScan(" + o + ")", null);
