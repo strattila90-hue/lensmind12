@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.graphics.Outline;
@@ -38,6 +39,7 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.app.AlertDialog;
 import android.graphics.Color;
+import android.hardware.ConsumerIrManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -335,7 +337,35 @@ public class MainActivity extends ComponentActivity {
 
 
     /** A weboldal innen kéri a rezgést: gombnyomásra tompa puffanás, tekeréskor apró kattanás. */
+    private final ExecutorService irExec = Executors.newSingleThreadExecutor();
+    private final AtomicInteger irPending = new AtomicInteger();
+
     private final class Bridge {
+        @JavascriptInterface
+        public boolean hasIr() {
+            ConsumerIrManager m = (ConsumerIrManager) getSystemService(CONSUMER_IR_SERVICE);
+            return m != null && m.hasIrEmitter();
+        }
+
+        /** Valódi IR jel a telefon adójából: az LG TV-nek vagy a LED-szalagnak. count = ismétlés (pl. hangerő lépések). */
+        @JavascriptInterface
+        public void ir(String key, int count, String fam) {
+            final ConsumerIrManager m = (ConsumerIrManager) getSystemService(CONSUMER_IR_SERVICE);
+            if (m == null || !m.hasIrEmitter()) return;
+            final String dev = IrCodes.isLedKey(key) ? "LED_" + ("B".equals(fam) ? "B" : "A") : "LG";
+            final int[] pat = IrCodes.pattern(dev, key);
+            if (pat == null) return;
+            final int n = Math.max(1, Math.min(count, 20));
+            if (irPending.get() > 40) return; // gyors húzásnál ne torlódjon a sor
+            irPending.addAndGet(n);
+            irExec.execute(() -> {
+                for (int i = 0; i < n; i++) {
+                    try { m.transmit(IrCodes.CARRIER, pat); Thread.sleep(95); } catch (Exception ignored) { }
+                    irPending.decrementAndGet();
+                }
+            });
+        }
+
         @JavascriptInterface
         public void scan(boolean on) {
             ui.post(() -> { if (on) startScan(); else stopScan("kézzel"); });

@@ -383,7 +383,7 @@ button{font:inherit;color:inherit}
     <div class="hints">
       <div><b>Csúszka</b>Kattints a sávra, hogy odaugorjon, vagy húzd. Görgetéssel finoman állítod.</div>
       <div><b>Okoskerék</b>Forgasd húzással vagy görgetéssel, pörgesd meg. A széle nyíl, középen az OK.</div>
-      <div><b>LED fény</b>A villanykörte gomb LED módba vált: a kerék a színt, a csúszka a fényerőt, a fel-le nyíl a telítettséget állítja. Az OK ki-be kapcsol.</div>
+      <div><b>LED fény</b>A villanykörte gomb LED módba vált: a kerék a színt, a csúszka a fényerőt, a fel-le nyíl a telítettséget állítja. Az OK ki-be kapcsol. A villanykörtét hosszan nyomva váltasz az A és B LED-típus között.</div>
     </div>
   </section>
 </main>
@@ -411,7 +411,7 @@ var TRACKS=['Nyomtatott fény','Lassú vasút','Sárga zaj','Éjféli tartalék'
 var CHN=['M1 HD','Duna','RTL','TV2','Viasat 3','Cinema','Sport 1','Hír TV','Natúr','Zene 24'];
 var LEN=214;
 var S={power:true,vol:32,mute:false,source:3,ch:7,playing:true,sel:1,app:null,haptic:true,track:0,t:38};
-var L={mode:false,on:false,h:28,s:85,b:60};
+var L={mode:false,on:false,h:28,s:85,b:60,fam:'A'};
 function cur(){return L.mode?L.b:S.vol}
 function hueName(h){
   var n=[[15,'Piros'],[45,'Narancs'],[70,'Sárga'],[160,'Zöld'],[200,'Türkiz'],[255,'Kék'],[290,'Lila'],[335,'Rózsaszín'],[361,'Piros']];
@@ -419,7 +419,24 @@ function hueName(h){
 }
 var btnLed=document.querySelector('[data-act="led"]');
 /* TV-azonosító (mini scan ablak): az APK kamerája küld eredményt, érintsd meg a kijelzőt a indításhoz */
+/* valódi IR: az APK a telefon IR adóján át küldi az LG TV-nek és a LED-szalagnak */
+var irWarned=false,lastColor='';
+function ir(key,count){
+  var n=window.OndaNative;
+  if(!n||!n.ir)return;
+  if(n.hasIr&&!n.hasIr()){if(!irWarned){irWarned=true;toast('Ezen a telefonon nincs IR adó')}return}
+  n.ir(key,count||1,L.fam);tx();
+}
+function ledColor(force){
+  var k=L.s<15?'WHITE':(L.h<70||L.h>=300)?'RED':(L.h<190)?'GREEN':'BLUE';
+  if(force||k!==lastColor){lastColor=k;ir(k)}
+}
 var T={scan:false,seen:false,led:false,announced:false,announcedLed:false};
+(function(){
+  var t;
+  btnLed.addEventListener('pointerdown',function(){t=setTimeout(function(){t=null;L.fam=L.fam==='A'?'B':'A';btnLed.dataset.skip='1';say('LED típus: '+L.fam);toast('LED típus: '+L.fam);render()},650)});
+  ['pointerup','pointerleave','pointercancel'].forEach(function(n){btnLed.addEventListener(n,function(){clearTimeout(t)})});
+})();
 document.getElementById('oled').addEventListener('click',function(){
   var n=window.OndaNative;
   if(n&&n.scan){
@@ -607,6 +624,8 @@ function detents(a,b){
 }
 function commitVol(nv,ticks){
   var old=cur();if(nv===old)return;
+  if(L.mode){var bs=Math.abs(Math.floor(nv/10)-Math.floor(old/10));if(bs)ir(nv>old?'BRIGHT_UP':'BRIGHT_DOWN',bs)}
+  else ir(nv>old?'VOL_UP':'VOL_DOWN',Math.abs(nv-old));
   if(L.mode){L.b=nv;L.on=true}else{S.vol=nv;if(S.mute)S.mute=false}
   var c=detents(old,nv);
   if(nv===0||nv===100)fx('stop',.7);
@@ -697,7 +716,8 @@ function tilt(z){
 }
 function kick(){if(!J.run){J.run=true;requestAnimationFrame(loop)}}
 function jogStep(dir){
-  if(L.mode){L.h=(L.h+dir*15+360)%360;L.on=true;fx('detent');say(hueName(L.h)+' · '+L.h+'°');tx();render();return}
+  if(L.mode){L.h=(L.h+dir*15+360)%360;L.on=true;ledColor();fx('detent');say(hueName(L.h)+' · '+L.h+'°');tx();render();return}
+  ir(dir>0?'RIGHT':'LEFT');
   S.sel=(S.sel+dir+APPS.length)%APPS.length;
   fx('detent');say('KERÉK › '+APPS[S.sel].n);tx();renderTV();
 }
@@ -740,11 +760,11 @@ ring.addEventListener('pointerup',jUp);ring.addEventListener('pointercancel',fun
 function dirClick(z){
   fx('down');setTimeout(function(){fx('up')},55);tx();
   if(!S.power&&!L.mode)return;
-  if(L.mode&&(z==='up'||z==='down')){L.s=clamp(L.s+(z==='up'?10:-10),0,100);L.on=true;say('Telítettség '+L.s+'%');render();return}
+  if(L.mode&&(z==='up'||z==='down')){L.s=clamp(L.s+(z==='up'?10:-10),0,100);L.on=true;ledColor(true);say('Telítettség '+L.s+'%');render();return}
   if(z==='left'){J.target-=STEP;kick()}
   else if(z==='right'){J.target+=STEP;kick()}
   else{
-    S.ch=((S.ch-1+(z==='up'?1:-1)+99)%99)+1;S.source=0;bigCh();say('CH '+S.ch+' · '+CHN[(S.ch-1)%CHN.length]);render();
+    ir(z==='up'?'CH_UP':'CH_DOWN');S.ch=((S.ch-1+(z==='up'?1:-1)+99)%99)+1;S.source=0;bigCh();say('CH '+S.ch+' · '+CHN[(S.ch-1)%CHN.length]);render();
   }
 }
 ring.addEventListener('keydown',function(e){
@@ -755,30 +775,31 @@ ring.addEventListener('keydown',function(e){
 /* ---------- gombok ---------- */
 var A={
   power:function(){
-    S.power=!S.power;fx('power');chirp(S.power);
+    S.power=!S.power;fx('power');chirp(S.power);ir('POWER');
     if(S.power){say('Üdv újra');toast('Bekapcsolva')}
     render();
   },
-  source:function(){S.source=(S.source+1)%SOURCES.length;say('FORRÁS › '+SOURCES[S.source]);toast(SOURCES[S.source]);render()},
-  mute:function(){S.mute=!S.mute;say(S.mute?'Némítva':'Hang be');toast(S.mute?'Némítva':'Hang be');osd();render()},
+  source:function(){ir('SOURCE');S.source=(S.source+1)%SOURCES.length;say('FORRÁS › '+SOURCES[S.source]);toast(SOURCES[S.source]);render()},
+  mute:function(){ir('MUTE');S.mute=!S.mute;say(S.mute?'Némítva':'Hang be');toast(S.mute?'Némítva':'Hang be');osd();render()},
   haptic:function(){
     S.haptic=!S.haptic;
     if(S.haptic){fx('down');say('Hang és rezgés be')}else{say('Hang és rezgés ki')}
     toast(S.haptic?'Hang és rezgés be':'Hang és rezgés ki');render();
   },
-  back:function(){if(S.app!==null&&S.source===3){S.app=null;say('Vissza › Kezdőlap')}else say('Vissza');toast('Vissza');render()},
-  home:function(){S.app=null;S.source=3;say('Kezdőlap');toast('Kezdőlap');render()},
-  menu:function(){say('Menü');toast('Menü');render()},
-  prev:function(){S.track=(S.track+TRACKS.length-1)%TRACKS.length;S.t=0;say('◀◀ '+TRACKS[S.track]);toast('Előző');render()},
-  next:function(){S.track=(S.track+1)%TRACKS.length;S.t=0;say('▶▶ '+TRACKS[S.track]);toast('Következő');render()},
-  play:function(){S.playing=!S.playing;say(S.playing?'▶ Lejátszás':'❚❚ Szünet');toast(S.playing?'Lejátszás':'Szünet');render()},
+  back:function(){ir('BACK');if(S.app!==null&&S.source===3){S.app=null;say('Vissza › Kezdőlap')}else say('Vissza');toast('Vissza');render()},
+  home:function(){ir('HOME');S.app=null;S.source=3;say('Kezdőlap');toast('Kezdőlap');render()},
+  menu:function(){ir('MENU');say('Menü');toast('Menü');render()},
+  prev:function(){ir('PREV');S.track=(S.track+TRACKS.length-1)%TRACKS.length;S.t=0;say('◀◀ '+TRACKS[S.track]);toast('Előző');render()},
+  next:function(){ir('NEXT');S.track=(S.track+1)%TRACKS.length;S.t=0;say('▶▶ '+TRACKS[S.track]);toast('Következő');render()},
+  play:function(){S.playing=!S.playing;ir(S.playing?'PLAY':'PAUSE');say(S.playing?'▶ Lejátszás':'❚❚ Szünet');toast(S.playing?'Lejátszás':'Szünet');render()},
   led:function(){
+    if(btnLed.dataset.skip){delete btnLed.dataset.skip;return}
     L.mode=!L.mode;if(L.mode)L.on=true;
     say(L.mode?'LED mód · kerék: szín':'Hangerő mód');toast(L.mode?'LED mód':'Hangerő mód');render();
   },
   ok:function(){
-    if(L.mode){L.on=!L.on;say(L.on?'LED be':'LED ki');toast(L.on?'LED be':'LED ki');render();return}
-    var a=APPS[S.sel];S.app=S.sel;S.source=a.src===0?0:3;S.t=0;say('OK › '+a.n);toast(a.n+' megnyitva');render();
+    if(L.mode){L.on=!L.on;ir(L.on?'LED_ON':'LED_OFF');say(L.on?'LED be':'LED ki');toast(L.on?'LED be':'LED ki');render();return}
+    ir('OK');var a=APPS[S.sel];S.app=S.sel;S.source=a.src===0?0:3;S.t=0;say('OK › '+a.n);toast(a.n+' megnyitva');render();
   }
 };
 function run(b){
