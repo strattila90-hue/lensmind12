@@ -13,3 +13,7 @@ Ezt tartsd meg minden módosításnál. A forrás az `app/src/main/assets/index.
 
 ## Frissítés
 Önálló frissítés: az app indításkor, utána 15 percenként, a háttérben pedig 3 óránként megnézi az új `onda-N` kiadást, letölti és telepíti. Android 12+ rendszeren az első kézi telepítés után megerősítés nélkül is lefuthat. Az aláírókulcs (`app/lensmind.keystore`) nyilvános, hobbi célra való.
+
+## TV-k (Wi-Fi beírás, LG webOS)
+- TV 1: 192.168.1.109, TV 2: 192.168.1.7 (a lista az `index.html` elején a `TVS` tömbben van).
+- Betűk beírása Wi-Fin megy (SSAP, `LgTv.java`), az első csatlakozáskor a TV-n jóvá kell hagyni a párosítást. Wi-Fi nélkül csak számjegy megy IR-en.

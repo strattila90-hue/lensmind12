@@ -77,6 +77,7 @@ public class MainActivity extends ComponentActivity {
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setWebViewClient(new WebViewClient());
         web.addJavascriptInterface(new Bridge(), "OndaNative");
+        lg = new LgTv(this, this::jsTvLink);
         buildLayout();
         web.loadUrl("file:///android_asset/index.html");
         scheduleBackgroundUpdates();
@@ -339,10 +340,31 @@ public class MainActivity extends ComponentActivity {
 
 
     /** A weboldal innen kéri a rezgést: gombnyomásra tompa puffanás, tekeréskor apró kattanás. */
+    private LgTv lg;
+
+    private void jsTvLink(String ip, String state, String msg) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("ip", ip);
+            o.put("state", state);
+            o.put("msg", msg);
+            ui.post(() -> web.evaluateJavascript("window.onTvLink&&window.onTvLink(" + o + ")", null));
+        } catch (Exception ignored) { }
+    }
+
     private final ExecutorService irExec = Executors.newSingleThreadExecutor();
     private final AtomicInteger irPending = new AtomicInteger();
 
     private final class Bridge {
+        @JavascriptInterface
+        public void tvConnect(String ip) { lg.connect(ip); }
+
+        @JavascriptInterface
+        public void tvText(String ip, String text) { lg.text(ip, text); }
+
+        @JavascriptInterface
+        public void tvEnter(String ip) { lg.enter(ip); }
+
         @JavascriptInterface
         public boolean hasIr() {
             ConsumerIrManager m = (ConsumerIrManager) getSystemService(CONSUMER_IR_SERVICE);

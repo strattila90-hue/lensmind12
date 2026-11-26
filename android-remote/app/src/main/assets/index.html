@@ -256,6 +256,12 @@ button{font:inherit;color:inherit}
   box-shadow:inset 0 3px 7px #000,0 1.2px 0 rgba(255,255,255,.1);outline-offset:2px}
 .kb .kbrow{display:flex;gap:10px}
 .kb .btn{width:auto;height:42px;flex:1;border-radius:21px;font-size:13px;letter-spacing:.16em;font-weight:600;color:var(--amber)}
+.kbtv{display:flex;gap:8px}
+.kbtv button{flex:1;height:34px;border:0;border-radius:17px;background:#23262b;color:#8b9097;font:600 12px var(--font-ui);letter-spacing:.1em;cursor:pointer;box-shadow:inset 0 1px 1px rgba(255,255,255,.12),0 2px 0 #08090a}
+.kbtv button.on{color:var(--amber);background:#2f3239;box-shadow:inset 0 2px 5px rgba(0,0,0,.5)}
+.kbtv button i{font-style:normal;display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:7px;background:#555}
+.kbtv button.ready i{background:#34c759;box-shadow:0 0 6px #34c759}
+.kbtv button.pairing i{background:var(--amber)}
 .kb small{font-size:11px;line-height:1.35;color:#7b8088}
 /* LED fényvezérlő mód */
 .stage{position:relative;z-index:1}
@@ -366,10 +372,11 @@ button{font:inherit;color:inherit}
       </div>
 
       <div class="kb" id="kb">
-        <label for="kbInput">Számbevitel a TV-nek</label>
-        <input id="kbInput" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="csatorna, PIN…">
-        <small>Az infravörös csak számokat tud küldeni. Betűkhöz Wi-Fi kapcsolat kell.</small>
-        <div class="kbrow"><button class="btn" id="kbOk" type="button">OK</button><button class="btn" id="kbClose" type="button">Bezár</button></div>
+        <label for="kbInput">Beírás a TV-nek</label>
+        <div class="kbtv" id="kbTv"></div>
+        <input id="kbInput" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="írj a TV-nek…">
+        <small id="kbStat">Wi-Fi kapcsolat nélkül csak számok mennek IR-en.</small>
+        <div class="kbrow"><button class="btn" id="kbOk" type="button">ENTER</button><button class="btn" id="kbClose" type="button">Bezár</button></div>
       </div>
       <div class="volbox">
         <div class="vol" id="vol" role="slider" tabindex="0" aria-label="Hangerő" aria-valuemin="0" aria-valuemax="100" aria-valuenow="32">
@@ -452,17 +459,45 @@ function ledColor(force){
   if(force||k!==lastColor){lastColor=k;ir(k)}
 }
 var T={scan:false,seen:false,led:false,announced:false,announcedLed:false};
-/* számbevitel: minden beírt számjegy azonnal valódi IR jelként megy az LG TV-nek */
+/* beírás: Wi-Fin át betű is (LG webOS), Wi-Fi nélkül csak számjegy megy IR-en */
+var TVS=[{n:'TV 1',ip:'192.168.1.109'},{n:'TV 2',ip:'192.168.1.7'}],tvi=0,linkState={};
+try{tvi=clamp(parseInt(localStorage.getItem('onda-tvi'),10)||0,0,TVS.length-1)}catch(e){}
+function curTv(){return TVS[tvi]}
+function linkOf(ip){return (linkState[ip]||{}).state||''}
+function paintLink(){
+  var box=document.getElementById('kbTv'),stat=document.getElementById('kbStat'),c=curTv(),st=linkState[c.ip]||{state:''};
+  box.innerHTML='';
+  TVS.forEach(function(t,i){
+    var b=document.createElement('button');b.type='button';b.className=(i===tvi?'on ':'')+linkOf(t.ip);
+    b.innerHTML='<i></i>'+t.n+' · .'+t.ip.split('.').pop();
+    b.addEventListener('click',function(){tvi=i;try{localStorage.setItem('onda-tvi',String(i))}catch(e){}fx('down');connectTv();paintLink()});
+    box.appendChild(b);
+  });
+  var m={ready:'Kapcsolódva ('+c.n+'). Amit írsz, megjelenik a TV szövegmezőjében.',pairing:'Fogadd el a párosítást a TV képernyőjén.',connecting:'Kapcsolódás a '+c.n+'-hez…'}[st.state];
+  stat.textContent=m||st.msg||'Wi-Fi kapcsolat nélkül csak számok mennek IR-en.';
+}
+function connectTv(){
+  var n=window.OndaNative,ip=curTv().ip;
+  if(!n||!n.tvConnect){linkState[ip]={state:'',msg:'A Wi-Fi beírás csak a telepített appban működik.'};paintLink();return}
+  linkState[ip]={state:'connecting'};paintLink();n.tvConnect(ip);
+}
+window.onTvLink=function(r){linkState[r.ip]={state:r.state,msg:r.msg||''};paintLink()};
 (function(){
-  var inp=document.getElementById('kbInput'),buf='',bufT=0;
+  var inp=document.getElementById('kbInput'),buf='',bufT=0,txT=0;
   function commit(){clearTimeout(bufT);if(buf&&S.source===0){S.ch=clamp(parseInt(buf,10)||S.ch,1,99);bigCh();render()}buf=''}
   inp.addEventListener('input',function(){
-    var v=inp.value,last=v.slice(-1);
-    if(/[^0-9]/.test(v)){inp.value=v.replace(/[^0-9]/g,'');if(/[^0-9]/.test(last)){say('Betűkhöz Wi-Fi kell');toast('Az IR csak számokat küld')}return}
-    if(last){ir('D'+last);fx('tick');buf+=last;if(S.source===0){bigEl.textContent=buf.padStart(2,'0');bigEl.classList.add('show')}clearTimeout(bufT);bufT=setTimeout(commit,1600)}
+    var n=window.OndaNative,ip=curTv().ip,v=inp.value,last=v.slice(-1);
+    if(linkOf(ip)==='ready'&&n&&n.tvText){clearTimeout(txT);txT=setTimeout(function(){n.tvText(ip,inp.value)},120);fx('tick');return}
+    if(/[0-9]/.test(last)){ir('D'+last);fx('tick');buf+=last;if(S.source===0){bigEl.textContent=buf.padStart(2,'0');bigEl.classList.add('show')}clearTimeout(bufT);bufT=setTimeout(commit,1600)}
+    else if(last){say('Betűkhöz Wi-Fi kell');toast('Nincs Wi-Fi kapcsolat a TV-vel');inp.value=v.replace(/[^0-9]/g,'')}
   });
-  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();ir('OK');fx('down');commit()}});
-  document.getElementById('kbOk').addEventListener('click',function(){ir('OK');fx('down');commit();tx()});
+  function enter(){
+    var n=window.OndaNative,ip=curTv().ip;
+    if(linkOf(ip)==='ready'&&n&&n.tvEnter){n.tvEnter(ip);inp.value=''}else{ir('OK');commit()}
+    fx('down');tx();
+  }
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();enter()}});
+  document.getElementById('kbOk').addEventListener('click',enter);
   document.getElementById('kbClose').addEventListener('click',function(){A.text()});
 })();
 (function(){
@@ -854,7 +889,7 @@ var A={
   text:function(){
     var kb=document.getElementById('kb'),on=!kb.classList.contains('show');
     kb.classList.toggle('show',on);btnText.setAttribute('aria-pressed',on);
-    if(on){var i=document.getElementById('kbInput');i.value='';setTimeout(function(){i.focus()},60)}else document.getElementById('kbInput').blur();
+    if(on){var i=document.getElementById('kbInput');i.value='';paintLink();connectTv();setTimeout(function(){i.focus()},60)}else document.getElementById('kbInput').blur();
   },
   haptic:function(){
     S.haptic=!S.haptic;
