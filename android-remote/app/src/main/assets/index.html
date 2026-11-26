@@ -1,0 +1,746 @@
+<title>Onda Haptic</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+/* Layout: egy képernyős színpad. Bal oldalt a távirányító (fix 380x1000 tervméret, JS-sel skálázva), jobb oldalt a TV. Görgetés nincs. */
+:root{
+  --ground:#d5d8d6; --ground-2:#bfc3c1; --hint:#4d5257; --hint-hi:#1d2023;
+  --amber:#ffb347; --amber-hot:#ffd08a; --coral:#ff6b57;
+  --graph-1:#32363d; --graph-2:#1c1f24; --graph-3:#121417;
+  --font-ui:'Chakra Petch',system-ui,sans-serif; --font-lcd:'Share Tech Mono',ui-monospace,monospace;
+  --k:.7;--lh:28;--ls:85;--lo:0;--lc:hsl(var(--lh) calc(var(--ls)*1%) 58%);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ground:#1b1d20;--ground-2:#0d0e10;--hint:#8c9298;--hint-hi:#d7dbdf;color-scheme:dark}}
+:root[data-theme="dark"]{--ground:#1b1d20;--ground-2:#0d0e10;--hint:#8c9298;--hint-hi:#d7dbdf;color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{
+  background:var(--ground-2);
+  background-image:radial-gradient(70% 60% at 38% 42%,var(--ground),var(--ground-2) 80%);
+  color:var(--hint-hi); font-family:var(--font-ui);
+  -webkit-tap-highlight-color:transparent; overscroll-behavior:none;
+}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+
+.stage{height:100%;display:flex;align-items:center;justify-content:center;gap:5vw;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:1.5vh}
+.fit{position:relative;flex:none;width:calc(380px*var(--k));height:calc(1000px*var(--k))}
+
+/* ================= TÁVIRÁNYÍTÓ ================= */
+.remote{
+  --tx:0deg;--ty:0deg;--lx:35%;--ly:12%;
+  position:absolute;left:50%;top:50%;margin:-500px 0 0 -190px;width:380px;height:1000px;font-size:10px;
+  border-radius:68px/62px;padding:36px 40px 40px;
+  display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  background:linear-gradient(162deg,var(--graph-1) 0%,var(--graph-2) 46%,var(--graph-3) 100%);
+  box-shadow:0 0 0 1.5px #08090b,
+    inset 0 2px 3px rgba(255,255,255,.16), inset 0 -6px 12px rgba(0,0,0,.65), inset 3px 0 6px rgba(255,255,255,.04), inset -3px 0 6px rgba(0,0,0,.35),
+    0 40px 60px -14px rgba(0,0,0,.55), 0 14px 26px rgba(0,0,0,.35);
+  transform:perspective(calc(1700px*var(--k))) rotateX(var(--tx)) rotateY(var(--ty)) scale(var(--k));
+  transition:transform .35s cubic-bezier(.2,.8,.2,1);
+  touch-action:manipulation;user-select:none;-webkit-user-select:none;
+}
+.remote.flat{--tx:0deg!important;--ty:0deg!important}
+.remote::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:.07;mix-blend-mode:screen;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+.sheen{position:absolute;inset:0;border-radius:inherit;pointer-events:none;mix-blend-mode:screen;
+  background:radial-gradient(55% 28% at var(--lx) var(--ly),rgba(255,255,255,.13),transparent 72%)}
+
+.ir{width:100%;height:22px;display:flex;align-items:center;justify-content:space-between;padding:0 6px}
+.irwin{flex:none;width:92px;height:11px;border-radius:6px;background:linear-gradient(#150a0c,#2b1014);box-shadow:inset 0 1px 3px #000,0 1px 0 rgba(255,255,255,.1)}
+.brand{font-size:11px;letter-spacing:.34em;color:#6f747c;text-transform:uppercase;font-weight:600;text-shadow:0 -1px 0 rgba(0,0,0,.8),0 1px 0 rgba(255,255,255,.07)}
+.led{width:7px;height:7px;border-radius:50%;background:#3a1517;box-shadow:inset 0 0 2px #000,0 1px 0 rgba(255,255,255,.1)}
+.led.tx{animation:tx .16s steps(2,end)}
+@keyframes tx{0%,100%{background:#3a1517}30%,70%{background:#ff5a4a;box-shadow:0 0 8px #ff5a4a}}
+
+/* OLED kijelző */
+.oled{position:relative;width:300px;height:140px;border-radius:20px;overflow:hidden;color:var(--amber);font-family:var(--font-lcd);
+  background:#040405;
+  box-shadow:inset 0 0 0 2.2px #0e0f11, inset 0 0 14px #000, 0 1.2px 0 rgba(255,255,255,.11), 0 -1px 0 rgba(0,0,0,.7);
+  padding:13px 18px 14px;display:flex;flex-direction:column;justify-content:space-between;transition:filter .5s}
+.oled::after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  background:linear-gradient(162deg,rgba(255,255,255,.1),transparent 38%),repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px)}
+.remote:not(.awake) .oled{filter:brightness(.62)}
+.o-top{display:flex;justify-content:space-between;font-size:16px;letter-spacing:.08em}
+.o-flags{display:flex;gap:10px}
+.o-flags b{font-weight:400;opacity:.16;transition:opacity .2s}
+.o-flags b.on{opacity:1;text-shadow:0 0 8px rgba(255,179,71,.8)}
+.o-mid{display:flex;align-items:center;gap:16px}
+.o-vol{font-size:68px;line-height:.9;letter-spacing:.02em;text-shadow:0 0 14px rgba(255,179,71,.55);font-variant-numeric:tabular-nums}
+.o-info{display:flex;flex-direction:column;gap:6px;min-width:0}
+.o-label{font-size:13px;opacity:.55;letter-spacing:.2em}
+.o-msg{font-size:17px;line-height:1.15;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.o-bar{display:flex;gap:2.5px;height:13px}
+.o-bar i{flex:1;border-radius:1.5px;background:rgba(255,179,71,.1);transition:background .06s,box-shadow .06s}
+.o-bar i.on{background:var(--amber);box-shadow:0 0 7px rgba(255,179,71,.75)}
+.remote.muted .o-bar i.on{background:#775a30;box-shadow:none}
+.remote.muted .o-vol{opacity:.4}
+.o-off{position:absolute;inset:0;z-index:2;background:#030304;display:none;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.o-off span{font-size:46px;opacity:.55;text-shadow:0 0 12px rgba(255,179,71,.4)}
+.o-off small{font-size:12px;letter-spacing:.35em;opacity:.35}
+.remote.off .o-off{display:flex}
+
+/* gombok */
+.row{width:100%;display:flex;justify-content:space-between;align-items:center}
+.btn{
+  --lift:4.5px;position:relative;display:grid;place-items:center;flex:none;width:58px;height:58px;border-radius:50%;border:0;padding:0;cursor:pointer;
+  color:#7b8088;background:linear-gradient(180deg,#464a52,#2c2f36 56%,#25272d);
+  box-shadow:0 var(--lift) 0 #0b0c0e,0 calc(var(--lift) + 5px) 9px rgba(0,0,0,.55),inset 0 1.2px 1px rgba(255,255,255,.24),inset 0 -2px 3px rgba(0,0,0,.35);
+  transition:translate .26s cubic-bezier(.2,2,.4,1),box-shadow .12s,color .3s;
+}
+.btn svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;transition:filter .3s}
+.btn.pill{width:86px;height:50px;border-radius:25px}
+.btn.wide{width:100px;height:56px;border-radius:28px}
+.btn.pressed{transition-duration:.03s,.03s,.3s;translate:0 3.4px;
+  box-shadow:0 1.1px 0 #0b0c0e,0 3px 5px rgba(0,0,0,.5),inset 0 1.5px 4px rgba(0,0,0,.45),inset 0 -1px 2px rgba(255,255,255,.07);
+  background:linear-gradient(180deg,#2e3137,#3a3d44)}
+.btn[aria-pressed="true"]::after{content:"";position:absolute;top:7px;width:5px;height:5px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber)}
+.btn.danger[aria-pressed="false"]::after{content:none}
+.remote.awake .btn{color:var(--amber)}
+.remote.awake .btn svg{filter:drop-shadow(0 0 4px rgba(255,179,71,.75))}
+.remote.awake .btn.danger{color:var(--coral)}
+.remote.awake .btn.danger svg{filter:drop-shadow(0 0 4px rgba(255,107,87,.8))}
+.btn.play{color:#9aa0a8}
+.remote.off .btn:not(.danger):not(.hap){opacity:.7}
+
+/* OKOSKEREK */
+.jog{position:relative;width:280px;height:280px;flex:none}
+.jtilt{position:absolute;inset:0;transform:perspective(560px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .22s cubic-bezier(.2,1.6,.4,1)}
+.jtilt.held{transition-duration:.05s}
+.bezel{position:absolute;inset:0;border-radius:50%;
+  background:linear-gradient(145deg,#0a0b0d,#23262b);
+  box-shadow:0 0 0 1.5px #060708,0 2px 0 rgba(255,255,255,.1),inset 0 6px 14px rgba(0,0,0,.95),inset 0 -2px 3px rgba(255,255,255,.1),0 14px 22px -8px rgba(0,0,0,.65)}
+.ring{position:absolute;inset:12px;border-radius:50%;cursor:grab;touch-action:none;outline-offset:4px;
+  background:
+    repeating-conic-gradient(rgba(0,0,0,.42) 0 .9deg,rgba(255,255,255,.035) .9deg 3deg),
+    radial-gradient(circle,#3a3d44 0,#2b2e34 58%,#43464e 100%);
+  box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.55),inset 0 0 22px rgba(0,0,0,.7)}
+.ring:active{cursor:grabbing}
+.ring::before{content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  background:repeating-conic-gradient(rgba(255,255,255,.28) 0 .7deg,transparent .7deg 30deg);
+  -webkit-mask:radial-gradient(circle,transparent 111px,#000 112px,#000 122px,transparent 123px);mask:radial-gradient(circle,transparent 111px,#000 112px,#000 122px,transparent 123px)}
+.ring::after{content:"";position:absolute;top:9px;left:50%;width:9px;height:9px;margin-left:-4.5px;border-radius:50%;
+  background:radial-gradient(circle,#ffe2b0,var(--amber) 55%,#a86a1e);box-shadow:0 0 0 1.5px rgba(0,0,0,.6),0 0 9px rgba(255,179,71,.85)}
+.sheen2{position:absolute;inset:12px;border-radius:50%;pointer-events:none;mix-blend-mode:overlay;
+  background:conic-gradient(from 18deg,transparent 0 6%,rgba(255,255,255,.55) 12%,transparent 20%,transparent 48%,rgba(255,255,255,.42) 62%,transparent 72%,transparent 100%);
+  -webkit-mask:radial-gradient(circle,transparent 66px,#000 67px);mask:radial-gradient(circle,transparent 66px,#000 67px)}
+.chev{position:absolute;width:22px;height:22px;margin:-11px;fill:none;stroke:#7b8088;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;transition:stroke .25s,filter .25s}
+.chev.u{left:50%;top:40px}.chev.d{left:50%;top:240px;rotate:180deg}.chev.l{left:40px;top:50%;rotate:-90deg}.chev.r{left:240px;top:50%;rotate:90deg}
+.remote.awake .chev{stroke:var(--amber);filter:drop-shadow(0 0 4px rgba(255,179,71,.7))}
+.jog[data-zone="up"] .chev.u,.jog[data-zone="down"] .chev.d,.jog[data-zone="left"] .chev.l,.jog[data-zone="right"] .chev.r{stroke:#fff;filter:drop-shadow(0 0 7px #fff)}
+.ok{position:absolute;left:50%;top:50%;width:116px;height:116px;margin:-58px;border-radius:50%;border:0;padding:0;cursor:pointer;
+  font-size:16px;letter-spacing:.28em;font-weight:600;color:#7b8088;
+  background:radial-gradient(circle at 36% 26%,#666a73,#33363d 52%,#1f2126);
+  box-shadow:0 0 0 6px #0e0f12,0 0 0 7.5px rgba(255,255,255,.09),0 7px 0 3px #090a0c,0 14px 18px rgba(0,0,0,.6),inset 0 2px 2px rgba(255,255,255,.3),inset 0 -6px 12px rgba(0,0,0,.45);
+  transition:translate .28s cubic-bezier(.2,2.2,.4,1),scale .28s cubic-bezier(.2,2.2,.4,1),box-shadow .1s,color .3s}
+.remote.awake .ok{color:var(--amber);text-shadow:0 0 8px rgba(255,179,71,.8)}
+.ok.pressed{transition-duration:.03s;translate:0 5px;scale:.965;
+  box-shadow:0 0 0 6px #0e0f12,0 0 0 7.5px rgba(255,255,255,.09),0 1px 0 2px #090a0c,0 3px 6px rgba(0,0,0,.6),inset 0 3px 10px rgba(0,0,0,.6),inset 0 -2px 3px rgba(255,255,255,.08)}
+
+/* CSÚSZKA */
+.volbox{width:300px;height:100px;display:flex;flex-direction:column;justify-content:space-between}
+.vol{position:relative;height:74px;cursor:pointer;touch-action:none;border-radius:16px;outline-offset:2px}
+.scale{position:absolute;left:24px;right:24px;top:2px;height:12px}
+.scale i{position:absolute;bottom:0;width:1.5px;height:7px;margin-left:-.75px;background:#3a3d44;border-radius:1px;transition:background .08s,box-shadow .08s}
+.scale i.m{height:12px;width:2px}
+.scale i.on{background:var(--amber);box-shadow:0 0 6px rgba(255,179,71,.85)}
+.remote.muted .scale i.on{background:#7a6a50;box-shadow:none}
+.slot{position:absolute;left:24px;right:24px;top:35px;height:15px;border-radius:8px;background:#050607;
+  box-shadow:inset 0 3px 6px #000,inset 0 -1px 0 rgba(255,255,255,.04),0 1.5px 0 rgba(255,255,255,.1),0 -1px 0 rgba(0,0,0,.8);overflow:hidden}
+.fill{position:absolute;left:0;top:4px;bottom:4px;border-radius:5px;width:calc(var(--v)*100%);
+  background:linear-gradient(90deg,#9a5f18,var(--amber));box-shadow:0 0 12px rgba(255,179,71,.65)}
+.remote.muted .fill{background:#4a4036;box-shadow:none}
+.thumb{position:absolute;top:13px;width:48px;height:60px;left:calc((100% - 48px)*var(--v));border-radius:11px;
+  background:linear-gradient(90deg,#74767c,#e7e8ea 14%,#b9bbc0 34%,#808289 55%,#d9dadd 80%,#8b8d93);
+  box-shadow:0 11px 14px -2px rgba(0,0,0,.65),0 3px 3px rgba(0,0,0,.55),inset 0 2px 1px rgba(255,255,255,.85),inset 0 -3px 4px rgba(0,0,0,.35),0 0 0 1px rgba(0,0,0,.6);
+  transition:scale .12s,box-shadow .12s}
+.thumb::before{content:"";position:absolute;left:9px;right:9px;top:9px;bottom:9px;border-radius:5px;
+  background:repeating-linear-gradient(90deg,rgba(0,0,0,.42) 0 1.5px,rgba(255,255,255,.35) 1.5px 3px);opacity:.5}
+.thumb::after{content:"";position:absolute;left:50%;top:6px;bottom:6px;width:3px;margin-left:-1.5px;border-radius:2px;
+  background:var(--amber);box-shadow:0 0 6px var(--amber),0 0 0 1px rgba(0,0,0,.35)}
+.remote.muted .thumb::after{background:#7b6a50;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+.thumb.held{scale:.975;box-shadow:0 5px 7px -2px rgba(0,0,0,.65),0 1.5px 2px rgba(0,0,0,.55),inset 0 2px 1px rgba(255,255,255,.75),inset 0 -3px 4px rgba(0,0,0,.4),0 0 0 1px rgba(0,0,0,.6)}
+.legend{display:flex;justify-content:space-between;align-items:center;font-size:11px;letter-spacing:.3em;color:#6c7179;font-weight:600;padding:0 2px}
+.vm{width:34px;height:20px;border:0;border-radius:10px;background:transparent;cursor:pointer;font-size:18px;line-height:1;color:#7b8088;box-shadow:none;transition:color .2s,background .1s}
+.vm.pressed{background:rgba(255,255,255,.08)}
+.remote.awake .vm{color:var(--amber)}
+
+/* ================= TV ================= */
+.tv{flex:1 1 0;min-width:0;max-width:min(880px,calc(100vw - 400px*var(--k) - 14vw));container-type:inline-size;display:flex;flex-direction:column;gap:3.2cqw}
+.tvframe{background:linear-gradient(160deg,#25272b,#0b0c0e);border-radius:1.8cqw;padding:.85cqw;box-shadow:0 0 0 1px #000,0 30px 50px -16px rgba(0,0,0,.6),inset 0 1px 1px rgba(255,255,255,.12),0 0 calc(var(--lo)*10cqw) calc(var(--lo)*1.4cqw) color-mix(in srgb,var(--lc) 75%,transparent);transition:box-shadow .4s}
+.screen{position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:1cqw;background:#050506;color:#fff;font-family:var(--font-ui);isolation:isolate}
+.scene{position:absolute;inset:-25%;z-index:0;
+  background:radial-gradient(38% 46% at 30% 36%,hsl(var(--h1,220) 85% 56%/.95),transparent 70%),radial-gradient(44% 54% at 72% 66%,hsl(var(--h2,265) 80% 52%/.9),transparent 70%),hsl(var(--h1,220) 45% 9%);
+  animation:drift 16s ease-in-out infinite alternate;transition:opacity .5s}
+@keyframes drift{from{transform:translate(-3%,-2%) rotate(-3deg) scale(1)}to{transform:translate(4%,3%) rotate(5deg) scale(1.12)}}
+.screen.nosig .scene{background:repeating-linear-gradient(0deg,#222 0 2px,#111 2px 4px);animation:none}
+.screen.paused *{animation-play-state:paused!important}
+.screen::after{content:"";position:absolute;inset:0;z-index:9;pointer-events:none;background:linear-gradient(115deg,rgba(255,255,255,.08),transparent 34%)}
+.screen>*:not(.scene){position:absolute}
+.eq{left:0;right:0;bottom:30%;height:26%;display:none;align-items:flex-end;gap:.7cqw;padding:0 8cqw;z-index:1}
+.screen.music .eq{display:flex}
+.eq i{flex:1;height:100%;border-radius:.3cqw;background:rgba(255,255,255,.7);transform-origin:bottom;animation:eq 1s ease-in-out infinite alternate;animation-duration:calc(.5s + var(--j,3)*.09s);animation-delay:calc(var(--i)*-.11s)}
+@keyframes eq{from{transform:scaleY(.12)}to{transform:scaleY(1)}}
+.chip{top:2.2cqw;left:2.6cqw;font-size:1.7cqw;letter-spacing:.2em;text-transform:uppercase;padding:.5cqw 1.2cqw;border-radius:2cqw;background:rgba(0,0,0,.4);backdrop-filter:blur(6px);z-index:3}
+.chbadge{top:2.2cqw;right:2.6cqw;font-family:var(--font-lcd);font-size:2.4cqw;z-index:3;text-shadow:0 0 1cqw rgba(0,0,0,.6)}
+.title{left:6cqw;right:6cqw;bottom:25%;z-index:3;display:flex;flex-direction:column;gap:.8cqw}
+.title h2{margin:0;font-size:6.6cqw;line-height:1;font-weight:600;text-shadow:0 .4cqw 2cqw rgba(0,0,0,.45)}
+.title p{margin:0;font-size:2cqw;opacity:.85;letter-spacing:.04em}
+.prog{height:.5cqw;border-radius:1cqw;background:rgba(255,255,255,.25);overflow:hidden;max-width:40cqw;margin-top:.6cqw}
+.prog i{display:block;height:100%;background:#fff;border-radius:inherit;width:0}
+.rail{left:0;right:0;bottom:0;height:23%;display:flex;gap:1.3cqw;align-items:center;justify-content:center;padding-bottom:1cqw;z-index:4;
+  background:linear-gradient(transparent,rgba(0,0,0,.65))}
+.tile{position:relative;flex:none;width:11.6cqw;aspect-ratio:16/10;border-radius:1cqw;display:grid;place-items:center;font-size:3.2cqw;font-weight:600;
+  background:linear-gradient(135deg,hsl(var(--a) 78% 52%),hsl(var(--b) 72% 36%));opacity:.62;transition:transform .22s cubic-bezier(.2,1.6,.4,1),opacity .2s,box-shadow .2s;box-shadow:0 .6cqw 1.4cqw rgba(0,0,0,.4)}
+.tile small{position:absolute;left:0;right:0;top:calc(100% + .5cqw);text-align:center;font-size:1.4cqw;font-weight:500;opacity:0;transition:opacity .2s;white-space:nowrap}
+.tile.sel{opacity:1;transform:translateY(-.9cqw) scale(1.12);box-shadow:0 0 0 .32cqw #fff,0 1.2cqw 2.4cqw rgba(0,0,0,.55)}
+.tile.sel small{opacity:1}
+.tile.act::before{content:"";position:absolute;top:.6cqw;right:.6cqw;width:1cqw;height:1cqw;border-radius:50%;background:#fff}
+.osdvol{top:7cqw;right:2.6cqw;display:flex;align-items:center;gap:1.1cqw;padding:1.1cqw 1.6cqw;border-radius:2cqw;background:rgba(10,10,12,.62);backdrop-filter:blur(8px);z-index:6;opacity:0;translate:0 -1cqw;transition:opacity .2s,translate .2s;pointer-events:none}
+.osdvol.show{opacity:1;translate:0 0}
+.osdvol svg{width:2.6cqw;height:2.6cqw;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.osdbar{width:18cqw;height:.9cqw;border-radius:1cqw;background:rgba(255,255,255,.25);overflow:hidden}
+.osdbar i{display:block;height:100%;background:#fff;border-radius:inherit}
+.osdvol.muted .osdbar i{background:var(--coral)}
+.osdvol.muted svg{stroke:var(--coral)}
+.osdvol b{font-family:var(--font-lcd);font-weight:400;font-size:2.3cqw;min-width:3.6cqw;text-align:right}
+.toast{top:50%;left:50%;translate:-50% -50%;font-size:3cqw;padding:1.1cqw 2.4cqw;border-radius:2cqw;background:rgba(10,10,12,.6);backdrop-filter:blur(8px);z-index:7;opacity:0;scale:.92;transition:opacity .18s,scale .18s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;scale:1}
+.bigch{top:6cqw;left:3.4cqw;font-family:var(--font-lcd);font-size:9cqw;z-index:7;opacity:0;text-shadow:0 0 2cqw rgba(0,0,0,.7);transition:opacity .25s;pointer-events:none}
+.bigch.show{opacity:1}
+.standby{display:none;position:absolute;inset:0;z-index:10;background:#030304;place-items:end start;padding:2cqw}
+.standby i{width:.8cqw;height:.8cqw;border-radius:50%;background:#ff4a3a;box-shadow:0 0 1cqw #ff4a3a;opacity:.7}
+.tv.off .standby{display:grid}
+.tv:not(.off) .screen{animation:on .5s ease-out}
+@keyframes on{0%{filter:brightness(3) saturate(0);transform:scaleY(.02)}40%{transform:scaleY(1);filter:brightness(2)}100%{filter:none}}
+.hints{display:grid;grid-template-columns:repeat(3,1fr);gap:2cqw;color:var(--hint)}
+.hints div{font-size:1.55cqw;line-height:1.35;border-top:1.5px solid color-mix(in srgb,var(--hint) 40%,transparent);padding-top:1cqw}
+.hints b{display:block;font-size:1.25cqw;letter-spacing:.22em;text-transform:uppercase;color:var(--hint-hi);margin-bottom:.4cqw;font-weight:600}
+
+/* LED fényvezérlő mód */
+.stage{position:relative;z-index:1}
+.room{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:var(--lo);transition:opacity .4s;
+  background:radial-gradient(60% 62% at 50% 52%,color-mix(in srgb,var(--lc) 60%,transparent),transparent 75%)}
+.row.r5 .btn{width:50px;height:50px}
+.row.r5 .btn svg{width:21px;height:21px}
+.remote.ledmode .oled{color:var(--lc)}
+.remote.ledmode .o-vol{text-shadow:0 0 14px var(--lc)}
+.remote.ledmode .o-flags b.on{text-shadow:0 0 8px var(--lc)}
+.remote.ledmode .o-bar i{background:color-mix(in srgb,var(--lc) 12%,transparent)}
+.remote.ledmode .o-bar i.on{background:var(--lc);box-shadow:0 0 7px var(--lc)}
+.remote.ledmode .fill{background:linear-gradient(90deg,hsl(var(--lh) 60% 24%),var(--lc));box-shadow:0 0 12px var(--lc)}
+.remote.ledmode .scale i.on{background:var(--lc);box-shadow:0 0 6px var(--lc)}
+.remote.ledmode .thumb::after{background:var(--lc);box-shadow:0 0 6px var(--lc),0 0 0 1px rgba(0,0,0,.35)}
+.remote.ledmode .ring::after{background:radial-gradient(circle,#fff,var(--lc) 60%,#222);box-shadow:0 0 0 1.5px rgba(0,0,0,.6),0 0 12px var(--lc)}
+.remote.ledmode.ledoff .fill{background:#4a4036;box-shadow:none}
+.remote.ledmode.ledoff .scale i.on{background:#7a6a50;box-shadow:none}
+.remote.ledmode.ledoff .o-bar i.on{background:#6b6b6b;box-shadow:none}
+.btn.ledbtn[aria-pressed="true"]{color:var(--lc)}
+.btn.ledbtn[aria-pressed="true"] svg{filter:drop-shadow(0 0 5px var(--lc))}
+@media (max-width:820px){.tv{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 6.6a8 8 0 1 0 11.4 0"/></symbol>
+    <symbol id="i-source" viewBox="0 0 24 24"><path d="M3 12h11"/><path d="M10 7l5 5-5 5"/><path d="M20 5v14"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></symbol>
+    <symbol id="i-vol" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M18.5 6.5a8 8 0 0 1 0 11"/></symbol>
+    <symbol id="i-hap" viewBox="0 0 24 24"><path d="M2 12h3l2.5-6 4 12 3-9 1.5 3H22"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M9 4L4 9l5 5"/><path d="M4 9h9a6 6 0 0 1 0 12h-3"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 11L12 4l8.5 7"/><path d="M6 9.5V20h12V9.5"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M6 5v14"/><path d="M19 5.5L9 12l10 6.5z"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M18 5v14"/><path d="M5 5.5L15 12 5 18.5z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8.5 5v14M15.5 5v14"/></symbol>
+    <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1.1 1.2 1.1 2.2h5c0-1 .5-1.7 1.1-2.2A6 6 0 0 0 12 3z"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+  </defs>
+</svg>
+
+<div class="room" aria-hidden="true"></div>
+<main class="stage" id="stage">
+  <div class="fit" id="fit">
+    <section class="remote" id="remote" aria-label="Haptikus távirányító">
+      <i class="sheen"></i>
+
+      <div class="ir"><span class="irwin"></span><span class="brand">Onda</span><i class="led" id="led"></i></div>
+
+      <div class="oled" id="oled" aria-live="polite">
+        <div class="o-top"><span id="oSrc">STREAMING</span><span class="o-flags"><b id="oMute">NÉMA</b><b id="oHap">HAPT</b></span></div>
+        <div class="o-mid"><span class="o-vol" id="oVol">032</span>
+          <div class="o-info"><span class="o-label" id="oLabel">HANGERŐ</span><span class="o-msg" id="oMsg">Görgess: hangerő</span></div></div>
+        <div class="o-bar" id="oBar"></div>
+        <div class="o-off"><span id="oClock">21:47</span><small>KÉSZENLÉT</small></div>
+      </div>
+
+      <div class="row r5">
+        <button class="btn danger" data-act="power" aria-label="Be- és kikapcsolás" aria-pressed="true"><svg><use href="#i-power"/></svg></button>
+        <button class="btn" data-act="source" aria-label="Forrás váltása"><svg><use href="#i-source"/></svg></button>
+        <button class="btn" data-act="mute" aria-label="Némítás" aria-pressed="false"><svg><use href="#i-mute"/></svg></button>
+        <button class="btn ledbtn" data-act="led" aria-label="LED fényvezérlő mód" aria-pressed="false"><svg><use href="#i-bulb"/></svg></button>
+        <button class="btn hap" data-act="haptic" aria-label="Hang és rezgés" aria-pressed="true"><svg><use href="#i-hap"/></svg></button>
+      </div>
+
+      <div class="jog" id="jog" data-zone="">
+        <div class="jtilt" id="jtilt">
+          <div class="bezel"></div>
+          <div class="ring" id="ring" tabindex="0" role="group" aria-label="Okoskerék: forgasd vagy görgess, nyilak a szélén"></div>
+          <div class="sheen2"></div>
+          <svg class="chev u"><use href="#i-chev"/></svg><svg class="chev d"><use href="#i-chev"/></svg>
+          <svg class="chev l"><use href="#i-chev"/></svg><svg class="chev r"><use href="#i-chev"/></svg>
+          <button class="ok" data-act="ok" aria-label="OK">OK</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn pill" data-act="back" aria-label="Vissza"><svg><use href="#i-back"/></svg></button>
+        <button class="btn pill" data-act="home" aria-label="Kezdőlap"><svg><use href="#i-home"/></svg></button>
+        <button class="btn pill" data-act="menu" aria-label="Menü"><svg><use href="#i-menu"/></svg></button>
+      </div>
+
+      <div class="row" style="padding:0 6px">
+        <button class="btn wide" data-act="prev" aria-label="Előző"><svg><use href="#i-prev"/></svg></button>
+        <button class="btn wide play" data-act="play" aria-label="Lejátszás / szünet"><svg><use id="playUse" href="#i-pause"/></svg></button>
+        <button class="btn wide" data-act="next" aria-label="Következő"><svg><use href="#i-next"/></svg></button>
+      </div>
+
+      <div class="volbox">
+        <div class="vol" id="vol" role="slider" tabindex="0" aria-label="Hangerő" aria-valuemin="0" aria-valuemax="100" aria-valuenow="32">
+          <div class="scale" id="scale"></div>
+          <div class="slot"><i class="fill"></i></div>
+          <div class="thumb" id="thumb"></div>
+        </div>
+        <div class="legend">
+          <button class="vm" data-vol="-5" aria-label="Halkítás">−</button><span id="lgLabel">HANGERŐ</span><button class="vm" data-vol="5" aria-label="Hangosítás">+</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="tv off" id="tv" aria-hidden="true">
+    <div class="tvframe">
+      <div class="screen" id="screen">
+        <div class="scene" id="scene"></div>
+        <div class="eq" id="eq"></div>
+        <div class="chip" id="tvSrc"></div>
+        <div class="chbadge" id="tvCh"></div>
+        <div class="title"><h2 id="tvTitle"></h2><p id="tvSub"></p><div class="prog" id="prog"><i id="tvProg"></i></div></div>
+        <div class="osdvol" id="osdVol"><svg><use id="osdIcon" href="#i-vol"/></svg><div class="osdbar"><i id="osdFill"></i></div><b id="osdNum">32</b></div>
+        <div class="toast" id="toast"></div>
+        <div class="bigch" id="bigCh"></div>
+        <div class="rail" id="rail"></div>
+        <div class="standby"><i></i></div>
+      </div>
+    </div>
+    <div class="hints">
+      <div><b>Csúszka</b>Kattints a sávra, hogy odaugorjon, vagy húzd. Görgetéssel finoman állítod.</div>
+      <div><b>Okoskerék</b>Forgasd húzással vagy görgetéssel, pörgesd meg. A széle nyíl, középen az OK.</div>
+      <div><b>LED fény</b>A villanykörte gomb LED módba vált: a kerék a színt, a csúszka a fényerőt, a fel-le nyíl a telítettséget állítja. Az OK ki-be kapcsol.</div>
+    </div>
+  </section>
+</main>
+
+<script>
+(function(){
+'use strict';
+var $=function(s){return document.querySelector(s)};
+var clamp=function(v,a,b){return Math.min(b,Math.max(a,v))};
+var reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+var remote=$('#remote'),fitEl=$('#fit'),led=$('#led'),tv=$('#tv'),screen=$('#screen');
+var oVol=$('#oVol'),oSrc=$('#oSrc'),oMsg=$('#oMsg'),oMute=$('#oMute'),oHap=$('#oHap'),oBar=$('#oBar'),oClock=$('#oClock');
+var slider=$('#vol'),thumb=$('#thumb'),scaleEl=$('#scale'),slot=slider.querySelector('.slot');
+var jog=$('#jog'),jtilt=$('#jtilt'),ring=$('#ring');
+var scene=$('#scene'),rail=$('#rail'),eq=$('#eq');
+var btnMute=document.querySelector('[data-act="mute"]'),btnPower=document.querySelector('[data-act="power"]'),btnHap=document.querySelector('[data-act="haptic"]');
+
+var SOURCES=['Élő TV','HDMI 1','HDMI 2','Streaming'];
+var APPS=[
+  {n:'Élő TV',l:'ÉT',h:[200,250],src:0},{n:'Filmtár',l:'Fi',h:[350,22]},{n:'Zenebox',l:'Ze',h:[275,322]},
+  {n:'Játékok',l:'Já',h:[145,190]},{n:'Fotók',l:'Fo',h:[38,12]},{n:'Beállítások',l:'Be',h:[215,232]}
+];
+var TRACKS=['Nyomtatott fény','Lassú vasút','Sárga zaj','Éjféli tartalék'];
+var CHN=['M1 HD','Duna','RTL','TV2','Viasat 3','Cinema','Sport 1','Hír TV','Natúr','Zene 24'];
+var LEN=214;
+var S={power:true,vol:32,mute:false,source:3,ch:7,playing:true,sel:1,app:null,haptic:true,track:0,t:38};
+var L={mode:false,on:false,h:28,s:85,b:60};
+function cur(){return L.mode?L.b:S.vol}
+function hueName(h){
+  var n=[[15,'Piros'],[45,'Narancs'],[70,'Sárga'],[160,'Zöld'],[200,'Türkiz'],[255,'Kék'],[290,'Lila'],[335,'Rózsaszín'],[361,'Piros']];
+  for(var i=0;i<n.length;i++)if(h<n[i][0])return n[i][1];return 'Piros';
+}
+var btnLed=document.querySelector('[data-act="led"]');
+
+/* ---------- fit ---------- */
+function fit(){
+  var de=document.documentElement,w=de.clientWidth,h=de.clientHeight;
+  var wide=w>820;
+  var k=Math.min(h*.94/1000,(wide?w*.34:w*.9)/380,1.3);
+  de.style.setProperty('--k',k.toFixed(4));
+}
+addEventListener('resize',fit);fit();
+
+/* ---------- hang (WebAudio szintézis) ---------- */
+var ac,out,noise;
+function audio(){
+  if(!S.haptic) return null;
+  if(!ac){
+    try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){return null}
+    out=ac.createGain();out.gain.value=1.1;
+    var comp=ac.createDynamicsCompressor();out.connect(comp);comp.connect(ac.destination);
+    var len=(ac.sampleRate*.12)|0;noise=ac.createBuffer(1,len,ac.sampleRate);
+    var d=noise.getChannelData(0);for(var i=0;i<len;i++)d[i]=Math.random()*2-1;
+  }
+  if(ac.state==='suspended')ac.resume();
+  return ac;
+}
+var P={
+  tick:{f:3800,q:2.4,d:.011,g:.5,tf:0},
+  detent:{f:2700,q:1.7,d:.02,g:.8,tf:125,tg:.22},
+  down:{f:1750,q:1.1,d:.034,g:1,tf:105,tg:.45},
+  up:{f:3400,q:1.9,d:.015,g:.55,tf:0},
+  stop:{f:650,q:.9,d:.06,g:1.2,tf:62,tg:.65},
+  power:{f:1250,q:.9,d:.05,g:1.1,tf:78,tg:.6}
+};
+function snd(name,vel){
+  var c=audio();if(!c)return;
+  var p=P[name],t=c.currentTime,j=1+(Math.random()-.5)*.14;vel=vel||1;
+  var s=c.createBufferSource();s.buffer=noise;
+  var bp=c.createBiquadFilter();bp.type='bandpass';bp.frequency.value=p.f*j;bp.Q.value=p.q;
+  var g=c.createGain();g.gain.setValueAtTime(p.g*vel,t);g.gain.exponentialRampToValueAtTime(.0001,t+p.d);
+  s.connect(bp);bp.connect(g);g.connect(out);s.start(t);s.stop(t+p.d+.02);
+  if(p.tf){
+    var o=c.createOscillator(),og=c.createGain();
+    o.frequency.setValueAtTime(p.tf*j,t);o.frequency.exponentialRampToValueAtTime(p.tf*.55,t+.05);
+    og.gain.setValueAtTime(p.tg*vel,t);og.gain.exponentialRampToValueAtTime(.0001,t+.06);
+    o.connect(og);og.connect(out);o.start(t);o.stop(t+.07);
+  }
+}
+function chirp(up){
+  var c=audio();if(!c)return;var t=c.currentTime+.06;
+  [0,.09].forEach(function(dt,i){
+    var o=c.createOscillator(),g=c.createGain();var f=(up?[660,990]:[990,520])[i];
+    o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(.0001,t+dt);g.gain.exponentialRampToValueAtTime(.12,t+dt+.01);g.gain.exponentialRampToValueAtTime(.0001,t+dt+.09);
+    o.connect(g);g.connect(out);o.start(t+dt);o.stop(t+dt+.1);
+  });
+}
+var VIB={tick:3,detent:6,down:12,up:4,stop:22,power:[14,30,18]};
+function buzz(kind){if(S.haptic&&navigator.vibrate){try{navigator.vibrate(VIB[kind])}catch(e){}}}
+
+/* ---------- visszajelzés ---------- */
+var awakeT,lastSnd=0,lastStop=0;
+function wake(){
+  remote.classList.add('awake');clearTimeout(awakeT);
+  awakeT=setTimeout(function(){remote.classList.remove('awake')},4500);
+}
+function tx(){led.classList.remove('tx');void led.offsetWidth;led.classList.add('tx')}
+function jolt(m){
+  if(reduce||!remote.animate)return;
+  remote.animate([{translate:'0 0'},{translate:((Math.random()-.5)*1.2*m)+'px '+(1.6*m)+'px'},{translate:'0 0'}],{duration:110,easing:'ease-out'});
+}
+function fx(kind,vel){
+  var now=performance.now();
+  if(kind==='tick'||kind==='detent'){if(now-lastSnd<14){wake();return}lastSnd=now}
+  if(kind==='stop'){if(now-lastStop<110)return;lastStop=now}
+  snd(kind,vel);buzz(kind);
+  if(kind==='down'||kind==='stop'||kind==='power')jolt(kind==='stop'?1.6:1);
+  wake();
+}
+
+/* ---------- üzenetek ---------- */
+var msgT;
+function defMsg(){if(L.mode)return hueName(L.h)+' · tel. '+L.s+'%';return S.app!==null&&S.source===3?'▶ '+APPS[S.app].n:'Görgess: hangerő'}
+function say(t){oMsg.textContent=t;clearTimeout(msgT);msgT=setTimeout(function(){oMsg.textContent=defMsg()},2400)}
+var toastT,toastEl=$('#toast');
+function toast(t){toastEl.textContent=t;toastEl.classList.add('show');clearTimeout(toastT);toastT=setTimeout(function(){toastEl.classList.remove('show')},1500)}
+var osdT,osdEl=$('#osdVol');
+function osd(){osdEl.classList.add('show');clearTimeout(osdT);osdT=setTimeout(function(){osdEl.classList.remove('show')},1900)}
+var bigT,bigEl=$('#bigCh');
+function bigCh(){bigEl.textContent=String(S.ch).padStart(2,'0');bigEl.classList.add('show');clearTimeout(bigT);bigT=setTimeout(function(){bigEl.classList.remove('show')},1800)}
+
+/* ---------- felépítés ---------- */
+var segs=[],ticks=[],tiles=[];
+for(var i=0;i<32;i++){var s=document.createElement('i');oBar.appendChild(s);segs.push(s)}
+for(var i2=0;i2<=20;i2++){var t=document.createElement('i');t.style.left=(i2*5)+'%';if(i2%5===0)t.className='m';scaleEl.appendChild(t);ticks.push(t)}
+APPS.forEach(function(a,i){
+  var d=document.createElement('div');d.className='tile';d.style.setProperty('--a',a.h[0]);d.style.setProperty('--b',a.h[1]);
+  d.innerHTML=a.l+'<small>'+a.n+'</small>';rail.appendChild(d);tiles.push(d);
+});
+for(var e=0;e<26;e++){var b=document.createElement('i');b.style.setProperty('--i',e);b.style.setProperty('--j',(Math.random()*7)|0);eq.appendChild(b)}
+
+/* ---------- megjelenítés ---------- */
+function fmt(s){return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function render(){
+  var cv=cur();
+  remote.classList.toggle('off',!S.power&&!L.mode);remote.classList.toggle('muted',!L.mode&&S.mute);tv.classList.toggle('off',!S.power);
+  var rs=document.documentElement.style;
+  rs.setProperty('--lh',L.h);rs.setProperty('--ls',L.s);rs.setProperty('--lo',L.on?(L.b/100*.9).toFixed(3):0);
+  remote.classList.toggle('ledmode',L.mode);remote.classList.toggle('ledoff',!L.on);
+  btnLed.setAttribute('aria-pressed',L.mode);
+  $('#oLabel').textContent=L.mode?'FÉNYERŐ':'HANGERŐ';$('#lgLabel').textContent=L.mode?'FÉNYERŐ':'HANGERŐ';
+  oVol.textContent=String(cv).padStart(3,'0');
+  oSrc.textContent=L.mode?'LED · '+L.h+'°':SOURCES[S.source].toUpperCase();
+  oMute.textContent=L.mode?'LED':'NÉMA';
+  oMute.classList.toggle('on',L.mode?L.on:S.mute);oHap.classList.toggle('on',S.haptic);
+  if(!msgT)oMsg.textContent=defMsg();
+  var lit=Math.round(cv/100*segs.length);
+  for(var i=0;i<segs.length;i++)segs[i].classList.toggle('on',i<lit);
+  for(var j=0;j<ticks.length;j++)ticks[j].classList.toggle('on',cv>0&&j*5<=cv);
+  slider.style.setProperty('--v',cv/100);slider.setAttribute('aria-valuenow',cv);
+  btnMute.setAttribute('aria-pressed',S.mute);btnHap.setAttribute('aria-pressed',S.haptic);btnPower.setAttribute('aria-pressed',S.power);
+  $('#playUse').setAttribute('href',S.playing?'#i-pause':'#i-play');
+  renderTV();
+  try{localStorage.setItem('onda',JSON.stringify({S:S,L:L}))}catch(e){}
+}
+function renderTV(){
+  var app=S.app!==null?APPS[S.app]:null;
+  var h1=220,h2=265,title,sub,showProg=false,music=false;
+  screen.classList.remove('nosig');
+  if(S.source===1||S.source===2){screen.classList.add('nosig');title='Nincs jel';sub=SOURCES[S.source]+' · kábel ellenőrzése'}
+  else if(S.source===0){h1=(S.ch*47)%360;h2=(h1+70)%360;title=CHN[(S.ch-1)%CHN.length];sub='Csatorna '+S.ch}
+  else if(app){h1=app.h[0];h2=app.h[1];title=app.n;sub=TRACKS[S.track]+' · '+fmt(S.t)+' / '+fmt(LEN);showProg=true;music=app.n==='Zenebox'}
+  else{title='Kezdőlap';sub='Válassz egy alkalmazást az okoskerékkel'}
+  scene.style.setProperty('--h1',h1);scene.style.setProperty('--h2',h2);
+  $('#tvTitle').textContent=title;$('#tvSub').textContent=sub;
+  $('#prog').style.display=showProg?'':'none';$('#tvProg').style.width=(S.t/LEN*100)+'%';
+  screen.classList.toggle('music',music&&S.playing||music);screen.classList.toggle('paused',!S.playing);
+  $('#tvSrc').textContent=SOURCES[S.source];
+  $('#tvCh').textContent=S.source===0?'CH '+String(S.ch).padStart(2,'0'):'';
+  for(var i=0;i<tiles.length;i++){tiles[i].classList.toggle('sel',i===S.sel);tiles[i].classList.toggle('act',S.source===3&&i===S.app)}
+  osdEl.classList.toggle('muted',S.mute);
+  $('#osdIcon').setAttribute('href',S.mute?'#i-mute':'#i-vol');
+  $('#osdFill').style.width=(S.mute?100:S.vol)+'%';$('#osdNum').textContent=S.mute?'—':S.vol;
+}
+setInterval(function(){if(S.power&&S.playing&&S.app!==null&&S.source===3){S.t=(S.t+1)%LEN;renderTV()}},1000);
+function clock(){var d=new Date();oClock.textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+clock();setInterval(clock,15000);
+
+/* ---------- hangerő ---------- */
+var glideRaf=0;
+function detents(a,b){
+  var fa=Math.floor(a/5),fb=Math.floor(b/5);
+  return Math.abs(fb-fa)+((b%5===0&&fa===fb&&a!==b)?1:0);
+}
+function commitVol(nv,ticks){
+  var old=cur();if(nv===old)return;
+  if(L.mode){L.b=nv;L.on=true}else{S.vol=nv;if(S.mute)S.mute=false}
+  var c=detents(old,nv);
+  if(nv===0||nv===100)fx('stop',.7);
+  else if(c)fx('detent',.85+Math.min(.3,c*.08));
+  else if(ticks)fx('tick');
+  else wake();
+  if(!L.mode)osd();tx();render();
+}
+function stepVol(d,nudgeOK){
+  var nv=clamp(cur()+d,0,100);
+  if(nv===cur()){fx('stop');nudge(Math.sign(d));return}
+  commitVol(nv,true);
+}
+function nudge(dir){
+  if(reduce||!thumb.animate)return;
+  thumb.animate([{translate:'0 0'},{translate:(dir*5)+'px 0'},{translate:'0 0'}],{duration:130,easing:'ease-out'});
+}
+function cancelGlide(){cancelAnimationFrame(glideRaf);glideRaf=0}
+function glideTo(target){
+  cancelGlide();
+  var from=cur(),t0=performance.now(),dur=Math.min(560,170+Math.abs(target-from)*4.4);
+  if(from===target)return;
+  glideRaf=requestAnimationFrame(function f2(now){
+    var p=clamp((now-t0)/dur,0,1),e=1-Math.pow(1-p,3);
+    commitVol(Math.round(from+(target-from)*e),false);
+    if(p<1)glideRaf=requestAnimationFrame(f2);else glideRaf=0;
+  });
+}
+var V={down:false,drag:false,id:0,sx:0,off:0};
+function valAt(x){var r=slot.getBoundingClientRect();return clamp((x-r.left)/r.width*100,0,100)}
+slider.addEventListener('pointerdown',function(e){
+  if(e.button>0)return;
+  slider.setPointerCapture(e.pointerId);
+  V.down=true;V.id=e.pointerId;V.sx=e.clientX;V.drag=false;
+  var tr=thumb.getBoundingClientRect(),on=e.clientX>=tr.left&&e.clientX<=tr.right;
+  thumb.classList.add('held');fx('down');
+  if(on){V.off=e.clientX-(tr.left+tr.width/2);V.drag=true;cancelGlide()}
+  else{V.off=0;glideTo(Math.round(valAt(e.clientX)))}
+  e.preventDefault();
+});
+slider.addEventListener('pointermove',function(e){
+  if(!V.down||e.pointerId!==V.id)return;
+  if(!V.drag){if(Math.abs(e.clientX-V.sx)<5)return;V.drag=true;cancelGlide();V.off=0}
+  commitVol(Math.round(valAt(e.clientX-V.off)),false);
+});
+function vUp(e){if(!V.down)return;V.down=false;thumb.classList.remove('held');fx('up')}
+slider.addEventListener('pointerup',vUp);slider.addEventListener('pointercancel',vUp);
+slider.addEventListener('keydown',function(e){
+  var big=e.shiftKey?10:1,k=e.key;
+  if(k==='ArrowRight'||k==='ArrowUp'){stepVol(big);e.preventDefault()}
+  else if(k==='ArrowLeft'||k==='ArrowDown'){stepVol(-big);e.preventDefault()}
+  else if(k==='PageUp'){stepVol(10);e.preventDefault()}
+  else if(k==='PageDown'){stepVol(-10);e.preventDefault()}
+  else if(k==='Home'){glideTo(0);e.preventDefault()}
+  else if(k==='End'){glideTo(100);e.preventDefault()}
+});
+
+/* ---------- görgetés ---------- */
+var acc={jog:0,vol:0};
+function wheelSteps(e,key,px){
+  var dy=e.deltaY||e.deltaX;if(e.deltaMode===1)dy*=33;else if(e.deltaMode===2)dy*=300;
+  if(Math.abs(dy)>=50){acc[key]=0;return {n:dy>0?1:-1,notch:true}}
+  acc[key]+=dy;var n=Math.trunc(acc[key]/px);acc[key]-=n*px;return {n:n,notch:false};
+}
+remote.addEventListener('wheel',function(e){
+  e.preventDefault();
+  if(e.target.closest('#jog')){
+    var r=wheelSteps(e,'jog',34);
+    if(r.n){J.target+=r.n*STEP;kick();wake();tx()}
+  }else{
+    var v=wheelSteps(e,'vol',9);
+    if(v.n)stepVol(-v.n*(v.notch?2:1));
+  }
+},{passive:false});
+
+/* ---------- okoskerék ---------- */
+var STEP=15,J={angle:0,target:0,vel:0,idx:0,down:false,drag:false,fling:false,snap:false,moved:0,last:0,cx:0,cy:0,id:0,zone:'',run:false};
+function ang(e){return Math.atan2(e.clientY-J.cy,e.clientX-J.cx)*180/Math.PI}
+function zoneOf(e){
+  var a=Math.atan2(e.clientX-J.cx,-(e.clientY-J.cy))*180/Math.PI;
+  if(a>=-45&&a<45)return 'up';if(a>=45&&a<135)return 'right';if(a>=-135&&a<-45)return 'left';return 'down';
+}
+var TILT={up:[5,0],down:[-5,0],left:[0,-5],right:[0,5]};
+function tilt(z){
+  if(z&&!reduce){jtilt.style.setProperty('--rx',TILT[z][0]+'deg');jtilt.style.setProperty('--ry',TILT[z][1]+'deg');jtilt.classList.add('held')}
+  else{jtilt.style.setProperty('--rx','0deg');jtilt.style.setProperty('--ry','0deg');jtilt.classList.remove('held')}
+  jog.dataset.zone=z||'';
+}
+function kick(){if(!J.run){J.run=true;requestAnimationFrame(loop)}}
+function jogStep(dir){
+  if(L.mode){L.h=(L.h+dir*15+360)%360;L.on=true;fx('detent');say(hueName(L.h)+' · '+L.h+'°');tx();render();return}
+  S.sel=(S.sel+dir+APPS.length)%APPS.length;
+  fx('detent');say('KERÉK › '+APPS[S.sel].n);tx();renderTV();
+}
+function loop(){
+  if(J.fling){
+    J.target+=J.vel;J.vel*=.945;
+    if(Math.abs(J.vel)<.3){J.fling=false;J.snap=true}
+  }
+  if(J.snap&&!J.drag){J.target=Math.round(J.target/STEP)*STEP;J.snap=false}
+  var idx=Math.round(J.target/STEP);
+  if(idx!==J.idx){
+    var dir=idx>J.idx?1:-1,n=Math.min(Math.abs(idx-J.idx),8);J.idx=idx;
+    for(var i=0;i<n;i++)jogStep(dir);
+  }
+  var f=(J.drag||J.fling)?1:.32;
+  J.angle+=(J.target-J.angle)*f;
+  if(Math.abs(J.target-J.angle)<.02)J.angle=J.target;
+  ring.style.transform='rotate('+J.angle.toFixed(2)+'deg)';
+  if(J.drag||J.fling||J.angle!==J.target||J.down)requestAnimationFrame(loop);else J.run=false;
+}
+ring.addEventListener('pointerdown',function(e){
+  if(e.button>0)return;
+  ring.setPointerCapture(e.pointerId);
+  var r=jog.getBoundingClientRect();J.cx=r.left+r.width/2;J.cy=r.top+r.height/2;
+  J.down=true;J.drag=false;J.fling=false;J.moved=0;J.vel=0;J.id=e.pointerId;J.last=ang(e);J.zone=zoneOf(e);
+  J.target=J.angle;tilt(J.zone);kick();wake();e.preventDefault();
+});
+ring.addEventListener('pointermove',function(e){
+  if(!J.down||e.pointerId!==J.id)return;
+  var a=ang(e),d=a-J.last;if(d>180)d-=360;if(d<-180)d+=360;J.last=a;J.moved+=Math.abs(d);
+  if(!J.drag&&J.moved>8){J.drag=true;tilt(null)}
+  if(J.drag){J.target+=d;J.vel=J.vel*.55+d*.45}
+});
+function jUp(e){
+  if(!J.down)return;J.down=false;tilt(null);
+  if(J.drag){J.drag=false;if(Math.abs(J.vel)>1.6)J.fling=true;else J.snap=true;kick()}
+  else{dirClick(J.zone)}
+}
+ring.addEventListener('pointerup',jUp);ring.addEventListener('pointercancel',function(){if(J.down){J.down=false;J.drag=false;J.snap=true;tilt(null);kick()}});
+function dirClick(z){
+  fx('down');setTimeout(function(){fx('up')},55);tx();
+  if(!S.power&&!L.mode)return;
+  if(L.mode&&(z==='up'||z==='down')){L.s=clamp(L.s+(z==='up'?10:-10),0,100);L.on=true;say('Telítettség '+L.s+'%');render();return}
+  if(z==='left'){J.target-=STEP;kick()}
+  else if(z==='right'){J.target+=STEP;kick()}
+  else{
+    S.ch=((S.ch-1+(z==='up'?1:-1)+99)%99)+1;S.source=0;bigCh();say('CH '+S.ch+' · '+CHN[(S.ch-1)%CHN.length]);render();
+  }
+}
+ring.addEventListener('keydown',function(e){
+  var z={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'}[e.key];
+  if(z){e.preventDefault();dirClick(z)}
+});
+
+/* ---------- gombok ---------- */
+var A={
+  power:function(){
+    S.power=!S.power;fx('power');chirp(S.power);
+    if(S.power){say('Üdv újra');toast('Bekapcsolva')}
+    render();
+  },
+  source:function(){S.source=(S.source+1)%SOURCES.length;say('FORRÁS › '+SOURCES[S.source]);toast(SOURCES[S.source]);render()},
+  mute:function(){S.mute=!S.mute;say(S.mute?'Némítva':'Hang be');toast(S.mute?'Némítva':'Hang be');osd();render()},
+  haptic:function(){
+    S.haptic=!S.haptic;
+    if(S.haptic){fx('down');say('Hang és rezgés be')}else{say('Hang és rezgés ki')}
+    toast(S.haptic?'Hang és rezgés be':'Hang és rezgés ki');render();
+  },
+  back:function(){if(S.app!==null&&S.source===3){S.app=null;say('Vissza › Kezdőlap')}else say('Vissza');toast('Vissza');render()},
+  home:function(){S.app=null;S.source=3;say('Kezdőlap');toast('Kezdőlap');render()},
+  menu:function(){say('Menü');toast('Menü');render()},
+  prev:function(){S.track=(S.track+TRACKS.length-1)%TRACKS.length;S.t=0;say('◀◀ '+TRACKS[S.track]);toast('Előző');render()},
+  next:function(){S.track=(S.track+1)%TRACKS.length;S.t=0;say('▶▶ '+TRACKS[S.track]);toast('Következő');render()},
+  play:function(){S.playing=!S.playing;say(S.playing?'▶ Lejátszás':'❚❚ Szünet');toast(S.playing?'Lejátszás':'Szünet');render()},
+  led:function(){
+    L.mode=!L.mode;if(L.mode)L.on=true;
+    say(L.mode?'LED mód · kerék: szín':'Hangerő mód');toast(L.mode?'LED mód':'Hangerő mód');render();
+  },
+  ok:function(){
+    if(L.mode){L.on=!L.on;say(L.on?'LED be':'LED ki');toast(L.on?'LED be':'LED ki');render();return}
+    var a=APPS[S.sel];S.app=S.sel;S.source=a.src===0?0:3;S.t=0;say('OK › '+a.n);toast(a.n+' megnyitva');render();
+  }
+};
+function run(b){
+  tx();
+  var act=b.dataset.act;
+  if(act){
+    if(!S.power&&act!=='power'&&act!=='haptic'&&act!=='led'&&!(L.mode&&act==='ok'))return;
+    A[act]();
+  }else if(b.dataset.vol){stepVol(+b.dataset.vol)}
+}
+document.querySelectorAll('[data-act],[data-vol]').forEach(function(b){
+  b.addEventListener('pointerdown',function(e){if(e.button>0)return;b.classList.add('pressed');if(b.dataset.act!=='power'&&b.dataset.act!=='haptic')fx('down')});
+  var rel=function(){if(b.classList.contains('pressed')){b.classList.remove('pressed');fx('up')}};
+  b.addEventListener('pointerup',rel);b.addEventListener('pointerleave',rel);b.addEventListener('pointercancel',rel);
+  b.addEventListener('click',function(e){if(e.detail===0){fx('down');setTimeout(function(){fx('up')},55)}run(b)});
+});
+
+/* ---------- dőlés a kurzor felé ---------- */
+remote.addEventListener('pointerdown',function(){remote.classList.add('flat')});
+['pointerup','pointercancel'].forEach(function(n){addEventListener(n,function(){remote.classList.remove('flat')})});
+if(!reduce&&matchMedia('(pointer:fine)').matches){
+  addEventListener('pointermove',function(e){
+    if(remote.classList.contains('flat'))return;
+    var r=fitEl.getBoundingClientRect();
+    var nx=clamp((e.clientX-(r.left+r.width/2))/(innerWidth/2),-1,1),ny=clamp((e.clientY-(r.top+r.height/2))/(innerHeight/2),-1,1);
+    remote.style.setProperty('--ty',(nx*4.5).toFixed(2)+'deg');remote.style.setProperty('--tx',(-ny*3).toFixed(2)+'deg');
+    remote.style.setProperty('--lx',(50+nx*38).toFixed(1)+'%');remote.style.setProperty('--ly',(22+ny*24).toFixed(1)+'%');
+  });
+}
+
+/* ---------- önfrissítés: új verzió publikálásakor az állapot megmarad ---------- */
+var saved=null;try{saved=JSON.parse(localStorage.getItem('onda'))}catch(e){}
+var hot=window.claude&&window.claude.hot;
+function start(d){
+  var src=d&&d.S?d:saved;
+  if(src){if(src.S)Object.assign(S,src.S);if(src.L)Object.assign(L,src.L);S.sel=clamp(S.sel|0,0,APPS.length-1)}
+  render();wake();
+}
+if(hot&&hot.snapshot){try{hot.snapshot(function(){return {S:S,L:L}})}catch(e){}}
+if(hot&&hot.ready){hot.ready(start)}else{start(hot&&hot.data||{})}
+})();
+</script>

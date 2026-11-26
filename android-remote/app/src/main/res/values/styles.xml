@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Onda" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/onda_bg</item>
+        <item name="android:statusBarColor">@color/onda_bg</item>
+        <item name="android:navigationBarColor">@color/onda_bg</item>
+    </style>
+    <color name="onda_bg">#15171A</color>
+    <color name="onda_icon_bg">#1B1E23</color>
+</resources>

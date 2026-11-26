@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Új ikon: grafitszínű távirányító, borostyán okoskerékkel és LED-jelzővel (108dp, a biztonságos tartomány a középső 66dp) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- test -->
+    <path android:fillColor="#3A3E46"
+        android:pathData="M38,24 h32 a8,8 0 0 1 8,8 v44 a8,8 0 0 1 -8,8 h-32 a8,8 0 0 1 -8,-8 v-44 a8,8 0 0 1 8,-8 z" />
+    <path android:fillColor="#23262B"
+        android:pathData="M40,26 h28 a6,6 0 0 1 6,6 v44 a6,6 0 0 1 -6,6 h-28 a6,6 0 0 1 -6,-6 v-44 a6,6 0 0 1 6,-6 z" />
+    <!-- kijelző -->
+    <path android:fillColor="#050506"
+        android:pathData="M39,30 h30 a2,2 0 0 1 2,2 v8 a2,2 0 0 1 -2,2 h-30 a2,2 0 0 1 -2,-2 v-8 a2,2 0 0 1 2,-2 z" />
+    <path android:fillColor="#FFB347"
+        android:pathData="M40,36 h5 v2 h-5 z M47,34 h8 v4 h-8 z" />
+    <!-- okoskerék -->
+    <path android:fillColor="#0B0C0E"
+        android:pathData="M54,47 m-13,0 a13,13 0 1 0 26,0 a13,13 0 1 0 -26,0 z" />
+    <path android:fillColor="#5A5E67"
+        android:pathData="M54,47 m-11,0 a11,11 0 1 0 22,0 a11,11 0 1 0 -22,0 z" />
+    <path android:fillColor="#2B2E34"
+        android:pathData="M54,47 m-5.5,0 a5.5,5.5 0 1 0 11,0 a5.5,5.5 0 1 0 -11,0 z" />
+    <path android:fillColor="#FFB347"
+        android:pathData="M54,38.6 m-1.6,0 a1.6,1.6 0 1 0 3.2,0 a1.6,1.6 0 1 0 -3.2,0 z" />
+    <!-- csúszka -->
+    <path android:fillColor="#050607"
+        android:pathData="M38,68 h32 a1.5,1.5 0 0 1 1.5,1.5 v0 a1.5,1.5 0 0 1 -1.5,1.5 h-32 a1.5,1.5 0 0 1 -1.5,-1.5 v0 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path android:fillColor="#FFB347"
+        android:pathData="M38,68.4 h20 v2.2 h-20 z" />
+    <path android:fillColor="#D9DADD"
+        android:pathData="M58,65.5 h5 a1.5,1.5 0 0 1 1.5,1.5 v5 a1.5,1.5 0 0 1 -1.5,1.5 h-5 a1.5,1.5 0 0 1 -1.5,-1.5 v-5 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <!-- gombok -->
+    <path android:fillColor="#5A5E67"
+        android:pathData="M38,77 m-2.2,0 a2.2,2.2 0 1 0 4.4,0 a2.2,2.2 0 1 0 -4.4,0 z M54,77 m-2.2,0 a2.2,2.2 0 1 0 4.4,0 a2.2,2.2 0 1 0 -4.4,0 z M70,77 m-2.2,0 a2.2,2.2 0 1 0 4.4,0 a2.2,2.2 0 1 0 -4.4,0 z" />
+</vector>
