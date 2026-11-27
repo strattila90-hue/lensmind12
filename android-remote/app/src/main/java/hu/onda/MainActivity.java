@@ -218,7 +218,7 @@ public class MainActivity extends ComponentActivity {
         scanText.setGravity(Gravity.CENTER);
         scanText.setBackgroundColor(0xCC050506);
         scanText.setPadding(dp(4), dp(4), dp(4), dp(4));
-        scanText.setText("TV / LED KERESÉSE…");
+        scanText.setText("IR CÉLZÓ · TV KÖZÉPRE");
         FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(-1, -2);
         tp.gravity = Gravity.BOTTOM;
         scanBox.addView(scanText, tp);
@@ -256,11 +256,11 @@ public class MainActivity extends ComponentActivity {
         if (camExec == null) camExec = Executors.newSingleThreadExecutor();
         if (labeler == null) labeler = ImageLabeling.getClient(new ImageLabelerOptions.Builder().setConfidenceThreshold(0.6f).build());
         scanBox.setVisibility(View.VISIBLE);
-        scanText.setText("TV / LED KERESÉSE…");
+        scanText.setText("IR CÉLZÓ · TV KÖZÉPRE");
         overlay.setState(false, false);
         overlay.run(true);
         ui.removeCallbacks(scanTimeout);
-        ui.postDelayed(scanTimeout, 60_000L);
+        ui.postDelayed(scanTimeout, 300_000L);
         ProcessCameraProvider.getInstance(this).addListener(() -> {
             try {
                 ProcessCameraProvider provider = ProcessCameraProvider.getInstance(this).get();
@@ -290,7 +290,7 @@ public class MainActivity extends ComponentActivity {
     @OptIn(markerClass = ExperimentalGetImage.class)
     private void analyze(ImageProxy proxy) {
         long now = SystemClock.elapsedRealtime();
-        if (proxy.getImage() == null || now - lastAnalysis < 600 || !scanning) { proxy.close(); return; }
+        if (proxy.getImage() == null || now - lastAnalysis < 900 || !scanning) { proxy.close(); return; }
         lastAnalysis = now;
         InputImage in = InputImage.fromMediaImage(proxy.getImage(), proxy.getImageInfo().getRotationDegrees());
         labeler.process(in)
@@ -314,7 +314,7 @@ public class MainActivity extends ComponentActivity {
         overlay.setState(tv, led);
         scanText.setTextColor(tv ? 0xFF34C759 : led ? 0xFFD946EF : 0xFFFFB347);
         scanText.setText(tv && led ? "TV + LED AZONOSÍTVA" : tv ? "TV AZONOSÍTVA" : led ? "LED AZONOSÍTVA"
-                : (top == null ? "TV / LED KERESÉSE…" : top.toUpperCase()));
+                : (top == null ? "IR CÉLZÓ · TV KÖZÉPRE" : top.toUpperCase()));
         if (tv != tvSeen || led != ledSeen || tv || led) {
             tvSeen = tv;
             ledSeen = led;

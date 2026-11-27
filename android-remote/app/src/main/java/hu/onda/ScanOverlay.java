@@ -65,6 +65,17 @@ final class ScanOverlay extends View {
         float y = m + (h - 2 * m) * t;
         line.setShader(new LinearGradient(0, y - dp(10), 0, y + dp(2), 0x00000000, col, Shader.TileMode.CLAMP));
         c.drawRect(m, y - dp(10), w - m, y + dp(2), line);
+        // IR célkereszt: a TV legyen a közepén, akkor talál az infravörös jel
+        Paint cross = new Paint(Paint.ANTI_ALIAS_FLAG);
+        cross.setStyle(Paint.Style.STROKE);
+        cross.setStrokeWidth(dp(1.5f));
+        cross.setColor(found ? 0xFF34C759 : 0x99FFFFFF);
+        float cx = w / 2f, cy = h / 2f, r = dp(14);
+        c.drawCircle(cx, cy, r, cross);
+        c.drawLine(cx - r - dp(6), cy, cx - r + dp(2), cy, cross);
+        c.drawLine(cx + r - dp(2), cy, cx + r + dp(6), cy, cross);
+        c.drawLine(cx, cy - r - dp(6), cx, cy - r + dp(2), cross);
+        c.drawLine(cx, cy + r - dp(2), cx, cy + r + dp(6), cross);
         if (found) {
             // lüktető keret: a felismerés látványos jelzése
             float pulse = 0.35f + 0.65f * t;
